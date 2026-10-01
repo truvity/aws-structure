@@ -3,6 +3,19 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- `pkg/engine/guardduty`: `truvity:aws-structure:AccountRegionGuardDuty`, the
+  GuardDuty finding alerting of one account in one region as a Pulumi
+  component: an enabled detector, the role EventBridge assumes (with the
+  caller's permissions boundary), its `sns:Publish` policy, an EventBridge rule
+  matching GuardDuty findings and the rule's target. The provider, the topic
+  ARN and the permissions boundary ARN come from the caller, so no ARN or
+  account id lives in the package. Names from a hook; `LegacyTopLevel` adds a
+  `noParent` alias per child. Nothing is protected or retained. It does nothing
+  at the organization level: no delegated administrator, organization
+  configuration, member accounts, protection plans or publishing destinations.
+
 ## v0.4.0
 
 - `pkg/engine/trail`: `truvity:aws-structure:AccountTrail`, the audit trail of

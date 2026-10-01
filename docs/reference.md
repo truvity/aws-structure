@@ -197,3 +197,49 @@ Refused before anything is registered, all reported at once: no `Account`,
 trail ARN, data-event resource, replication role name or permissions boundary;
 a key alias that is empty or lacks the `alias/` prefix; and a naming hook
 returning an empty or repeated name.
+
+## `pkg/engine/guardduty`
+
+`truvity:aws-structure:AccountRegionGuardDuty` deploys the alerting for
+GuardDuty findings of one account in one region: an enabled detector and an
+EventBridge rule that publishes every finding to an SNS topic through a role.
+One component per account per region, because the detector, the rule and the
+role's policy are regional and the topic is a per-region input. It creates
+nothing at the organization level (no delegated administrator, organization
+configuration, member accounts, protection plans or publishing destinations).
+
+```go
+c, err := guardduty.New(ctx, "guardduty-"+account+"-"+region, &guardduty.Args{
+	Account:             account,
+	Region:              region,        // feeds the role and rule names
+	SNSTopicARN:         topicARN,      // may be in another account
+	PermissionsBoundary: boundaryARN,   // set on the EventBridge role
+	Provider:            provider,      // the account, in Region
+	Names:               func(c guardduty.Child) string { /* the names your stack already uses */ },
+	LegacyTopLevel:      true,          // adopting resources created without a parent
+})
+```
+
+The component carries no ARN or account id of its own: the topic and the
+boundary are caller inputs. The topic's policy, which must let the account
+publish, is the caller's.
+
+Children (all registered under the component, none protected or retained, all
+created with Provider):
+
+| Child | Type | Default name | Notes |
+| --- | --- | --- | --- |
+| Detector | `aws:guardduty/detector:Detector` | `<c>-detector` | enabled |
+| EventBridge role | `aws:iam/role:Role` | `<c>-eventbridge-role` | named `eventbridge-sns-<region>`; trusts `events.amazonaws.com`; `PermissionsBoundary` |
+| Role policy | `aws:iam/rolePolicy:RolePolicy` | `<c>-eventbridge-policy` | `sns-publish`: `sns:Publish` on `SNSTopicARN` |
+| Rule | `aws:cloudwatch/eventRule:EventRule` | `<c>-rule` | named `guardduty-findings-<region>`; matches `aws.guardduty` / `GuardDuty Finding` |
+| Target | `aws:cloudwatch/eventTarget:EventTarget` | `<c>-target` | target id `security-alerts-sns`; `SNSTopicARN` with the role |
+
+`Names` receives a `Child{Component, Kind, Account, Region}`. The names it
+returns are part of the URNs and must be unique. With `LegacyTopLevel` every
+child carries one alias with `noParent`, the same type and the name `Names`
+gives it, so adopting existing resources is not a replace.
+
+Refused before anything is registered, all reported at once: no `Account`,
+`Region` or `Provider`; no `SNSTopicARN` or `PermissionsBoundary`; and a naming
+hook returning an empty or repeated name.
