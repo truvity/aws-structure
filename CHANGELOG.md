@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.5.0
 
 - `pkg/engine/guardduty`: `truvity:aws-structure:AccountRegionGuardDuty`, the
   GuardDuty finding alerting of one account in one region as a Pulumi
