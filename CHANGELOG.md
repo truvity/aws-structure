@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.4.0
 
 - `pkg/engine/trail`: `truvity:aws-structure:AccountTrail`, the audit trail of
   one account as a Pulumi component: a KMS key with rotation and an alias, the
