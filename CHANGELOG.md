@@ -3,6 +3,15 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- `pkg/engine/baseline`: `truvity:aws-structure:AccountBaseline`, the
+  per-account baseline as a Pulumi component: EBS default encryption and
+  IAM Access Analyzers per region, from a `registry.Baseline`. Providers
+  come from the caller; names from a hook; `LegacyTopLevel` adds a
+  `noParent` alias per child. Password policy, auditor role and boundaries
+  are refused until implemented.
+
 ## v0.1.0
 
 - `pkg/registry`: the registry schema for the v1 scope (organization,
