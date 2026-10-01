@@ -126,3 +126,74 @@ document that is not JSON; an auditor role without a name, trusted principal or
 permissions boundary, with an empty or repeated managed policy, or with a
 policy lacking a name or a JSON document; and a naming hook returning an empty
 or repeated name.
+
+## `pkg/engine/trail`
+
+`truvity:aws-structure:AccountTrail` deploys the audit trail of one account:
+a KMS key, the trail bucket with its access-log and cross-region replica
+buckets, the replication role and a multi-region trail that logs the account
+itself. One component per account. It is a per-account trail, not an
+organization trail: `IsOrganizationTrail` is false.
+
+```go
+c, err := trail.New(ctx, "trail-"+account, &trail.Args{
+	Account: account,
+	Buckets: trail.Buckets{Trail: trailBucket, AccessLog: logBucket, Replica: replicaBucket},
+	KeyAlias:          "alias/trail",
+	KeyAdministrator:  rootARN,     // may manage the key (kms:*)
+	TrailARN:          trailARNs,   // trails that may use the key; wildcards allowed
+	DataEventResource: s3ARN,       // S3 data events the trail logs
+	ReplicationRole: trail.ReplicationRole{
+		Name:                "replication",
+		PermissionsBoundary: boundaryARN,
+	},
+	Provider:        provider,        // the account, in the trail's region
+	ReplicaProvider: replicaProvider, // the account, in the replica's region
+	Names:           func(c trail.Child) string { /* the names your stack already uses */ },
+	LegacyTopLevel:  true,            // adopting resources created without a parent
+})
+```
+
+The component carries no ARN, bucket name or account id of its own: every one
+is a caller input. The retention periods are fixed (see the table).
+
+Children (all registered under the component, none protected or retained):
+
+| Child | Type | Default name | Provider |
+| --- | --- | --- | --- |
+| Key | `aws:kms/key:Key` | `<c>-kms-key` | Provider; rotation on |
+| Key alias | `aws:kms/alias:Alias` | `<c>-kms-alias` | Provider |
+| Trail bucket | `aws:s3/bucket:Bucket` | `<c>-bucket` | Provider |
+| Trail bucket policy | `aws:s3/bucketPolicy:BucketPolicy` | `<c>-bucket-policy` | Provider; CloudTrail may read the ACL and put objects, HTTPS only |
+| Trail bucket public access block | `aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock` | `<c>-public-access-block` | Provider |
+| Trail bucket encryption | `aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2` | `<c>-sse` | Provider; KMS with the key |
+| Trail bucket lifecycle | `aws:s3/bucketLifecycleConfigurationV2:BucketLifecycleConfigurationV2` | `<c>-lifecycle` | Provider; Glacier after 90 days, expire after 365 |
+| Access-log bucket | `aws:s3/bucket:Bucket` | `<c>-access-log-bucket` | Provider |
+| Access-log ownership | `aws:s3/bucketOwnershipControls:BucketOwnershipControls` | `<c>-access-log-ownership` | Provider; `BucketOwnerEnforced` |
+| Access-log public access block | `aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock` | `<c>-access-log-public-access-block` | Provider |
+| Access-log encryption | `aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2` | `<c>-access-log-sse` | Provider; AES256 |
+| Access-log bucket policy | `aws:s3/bucketPolicy:BucketPolicy` | `<c>-access-log-bucket-policy` | Provider; HTTPS only |
+| Access-log lifecycle | `aws:s3/bucketLifecycleConfigurationV2:BucketLifecycleConfigurationV2` | `<c>-access-log-lifecycle` | Provider; expire after 365 days |
+| Trail bucket logging | `aws:s3/bucketLoggingV2:BucketLoggingV2` | `<c>-logging` | Provider; prefix `cloudtrail/` |
+| Trail bucket versioning | `aws:s3/bucketVersioningV2:BucketVersioningV2` | `<c>-versioning` | Provider |
+| Replica bucket | `aws:s3/bucket:Bucket` | `<c>-replica-bucket` | ReplicaProvider |
+| Replica versioning | `aws:s3/bucketVersioningV2:BucketVersioningV2` | `<c>-replica-versioning` | ReplicaProvider |
+| Replica encryption | `aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2` | `<c>-replica-sse` | ReplicaProvider; AES256 |
+| Replica public access block | `aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock` | `<c>-replica-public-access-block` | ReplicaProvider |
+| Replica bucket policy | `aws:s3/bucketPolicy:BucketPolicy` | `<c>-replica-bucket-policy` | ReplicaProvider; HTTPS only |
+| Replica lifecycle | `aws:s3/bucketLifecycleConfigurationV2:BucketLifecycleConfigurationV2` | `<c>-replica-lifecycle` | ReplicaProvider; Glacier Instant Retrieval at once, expire after 365 days |
+| Replication role | `aws:iam/role:Role` | `<c>-replication-role` | Provider; `ReplicationRole.PermissionsBoundary` |
+| Replication role policy | `aws:iam/rolePolicy:RolePolicy` | `<c>-replication-policy` | Provider |
+| Replication configuration | `aws:s3/bucketReplicationConfig:BucketReplicationConfig` | `<c>-replication` | Provider; depends on both versionings |
+| Trail | `aws:cloudtrail/trail:Trail` | `<c>-trail` | Provider; multi-region, log file validation, global service events, management events and `DataEventResource` data events; depends on the trail bucket and its policy |
+
+`Names` receives a `Child{Component, Kind, Account}`. The names it returns are
+part of the URNs and must be unique. With `LegacyTopLevel` every child carries
+one alias with `noParent`, the same type and the name `Names` gives it, so
+adopting existing resources is not a replace.
+
+Refused before anything is registered, all reported at once: no `Account`,
+`Provider` or `ReplicaProvider`; a missing bucket name, key administrator,
+trail ARN, data-event resource, replication role name or permissions boundary;
+a key alias that is empty or lacks the `alias/` prefix; and a naming hook
+returning an empty or repeated name.

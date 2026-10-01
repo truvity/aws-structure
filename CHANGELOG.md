@@ -3,6 +3,21 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- `pkg/engine/trail`: `truvity:aws-structure:AccountTrail`, the audit trail of
+  one account as a Pulumi component: a KMS key with rotation and an alias, the
+  trail bucket (policy, public access block, KMS encryption, lifecycle,
+  versioning, access logging, cross-region replication), its access-log and
+  replica buckets, the replication role and a multi-region trail with log file
+  validation and S3 data events. Providers (the account's, and the replica
+  region's) come from the caller; bucket names, the key alias, the key
+  administrator and trail ARNs, the data-event resource and the replication
+  role's name and permissions boundary are inputs, so no ARN or account id lives
+  in the package. Names from a hook; `LegacyTopLevel` adds a `noParent` alias
+  per child. Nothing is protected or retained. It is a per-account trail, not
+  an organization trail.
+
 ## v0.3.0
 
 - `pkg/engine/iam`: `truvity:aws-structure:AccountIAM`, the per-account
