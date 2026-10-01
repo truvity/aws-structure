@@ -243,3 +243,104 @@ gives it, so adopting existing resources is not a replace.
 Refused before anything is registered, all reported at once: no `Account`,
 `Region` or `Provider`; no `SNSTopicARN` or `PermissionsBoundary`; and a naming
 hook returning an empty or repeated name.
+
+## `pkg/engine/sso`
+
+IAM Identity Center access, as two components and two lookups. The boundary is
+the unit that is created, kept and reviewed together: a permission set with its
+policies is one component (`PermissionSet`), and the assignments on one target
+account are one component (`AccountAssignments`). Neither spans the instance, so
+a stack may manage some sets or some accounts only. Groups a directory sync
+fills are looked up, never created; there is no group component.
+
+The instance ARN, every principal id, every account id, every permission set
+ARN and every AWS-managed policy ARN are caller inputs: the package carries
+none. The provider is the caller's too (the region the instance lives in); it
+is never defaulted.
+
+### `truvity:aws-structure:PermissionSet`
+
+```go
+ps, err := sso.NewPermissionSet(ctx, "ps-"+key, &sso.PermissionSetArgs{
+	InstanceARN:        instanceARN,           // the Identity Center instance
+	Set:                registry.PermissionSet{Name: "set-a", SessionDuration: "PT8H", ManagedPolicies: managedARNs},
+	BoundaryPolicyName: "boundary-a",          // optional: a customer managed policy, by name
+	Provider:           provider,
+	Names:              func(c sso.SetChild) string { /* the names your stack already uses */ },
+	LegacyTopLevel:     true,                  // adopting resources created without a parent
+})
+// ps.Arn and ps.Set are what AccountAssignments takes.
+```
+
+Children (all registered under the component with Provider):
+
+| Child | Type | Default name | Notes |
+| --- | --- | --- | --- |
+| Permission set | `aws:ssoadmin/permissionSet:PermissionSet` | `<c>-set` | `Set.Name`; `Set.SessionDuration` and `Set.Description` only when non-empty. **Protected and retained on delete** |
+| Managed policy | `aws:ssoadmin/managedPolicyAttachment:ManagedPolicyAttachment` | `<c>-managed-policy-<i>` | one per `Set.ManagedPolicies`, in order; depends on the set |
+| Inline policy | `aws:ssoadmin/permissionSetInlinePolicy:PermissionSetInlinePolicy` | `<c>-inline-policy` | when `Set.InlinePolicy` is non-empty; depends on the set |
+| Boundary | `aws:ssoadmin/permissionsBoundaryAttachment:PermissionsBoundaryAttachment` | `<c>-boundary` | when `BoundaryPolicyName` is non-empty: a customer managed policy reference by name; depends on the set |
+
+`Set.Includes` is not read: whoever builds the assignments expands it. Only the
+permission set is protected and retained; deleting one revokes everyone's
+access, and the attachments are recreated from it.
+
+`Names` receives a `SetChild{Component, Kind, Name, Index}` (`Index` is the
+policy's position for `SetKindManagedPolicy`). The names it returns are part of
+the URNs and must be unique. With `LegacyTopLevel` every child carries one alias
+with `noParent`, the same type and the name `Names` gives it.
+
+Refused before anything is registered, all reported at once: no `InstanceARN`
+or `Provider`; no `Set.Name`; a `Set.SessionDuration` that is not `PT..H..M`; an
+empty or repeated managed policy; an inline policy that is not JSON or is over
+10240 bytes; and a naming hook returning an empty or repeated name.
+
+### `truvity:aws-structure:AccountAssignments`
+
+```go
+a, err := sso.NewAccountAssignments(ctx, "assignments-"+account, &sso.AccountAssignmentsArgs{
+	Account:     account,                      // feeds names only
+	InstanceARN: instanceARN,
+	TargetID:    accountID,                    // the target account's id
+	Assignments: []sso.Assignment{{
+		Principal:        "group-a",            // feeds names only
+		PrincipalType:    "group",              // or "user"; empty is group
+		PrincipalID:      groupIDs["group-a"],  // from sso.LookupGroupIDs
+		PermissionSet:    "set-a",              // feeds names only
+		PermissionSetARN: ps.Arn,               // or sso.LookupPermissionSetARN for a hand-made set
+		LegacyNames:      []string{"older-name"},
+	}},
+	Provider:       provider,
+	Names:          func(c sso.AssignmentChild) string { /* the names your stack already uses */ },
+	LegacyTopLevel: true,
+})
+```
+
+An `Assignment` is a resolved `registry.Assignment`: the registry names accounts
+and OUs, and the caller resolves each to one target and every reference to an id
+or ARN. One `ssoadmin.AccountAssignment` per assignment, named
+`<c>-<permission set>-<principal>` (with `-user` for a user) by default, with
+`PrincipalType` `GROUP` or `USER`, `TargetType` `AWS_ACCOUNT`. Nothing is
+protected or retained.
+
+Each `LegacyNames` entry becomes an alias with that name, so a renamed
+assignment is a rename in state and not a replace; with `LegacyTopLevel` it is
+the name under the stack (`noParent`), exactly as the plain `noParent` alias
+that `LegacyTopLevel` adds to every assignment.
+
+Refused before anything is registered, all reported at once: no `Account`,
+`InstanceARN`, `TargetID` or `Provider`; an assignment without `Principal`,
+`PrincipalID`, `PermissionSet` or `PermissionSetARN`; a `PrincipalType` that is
+neither `group` nor `user`; a repeated (permission set, principal, type); an
+empty `LegacyNames` entry; and a naming hook returning an empty or repeated
+name.
+
+### Lookups
+
+- `sso.LookupGroupIDs(ctx, identityStoreID, displayNames, provider)` reads each
+  group's Identity Store id by display name (repeated names once) and returns a
+  map from display name to id. Every group that cannot be read is reported
+  together.
+- `sso.LookupPermissionSetARN(ctx, instanceARN, name, provider)` reads the ARN
+  of an existing permission set by name: for a set made by hand that this
+  package does not manage.

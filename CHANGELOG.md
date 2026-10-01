@@ -3,6 +3,22 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- `pkg/engine/sso`: IAM Identity Center access as Pulumi components.
+  `truvity:aws-structure:PermissionSet` is one permission set with its AWS
+  managed policy attachments, optional inline policy and optional permissions
+  boundary (a customer managed policy reference by name); the permission set
+  is protected and retained on delete, nothing else is.
+  `truvity:aws-structure:AccountAssignments` is the assignments of groups
+  and users to permission sets on one target account. `LookupGroupIDs`
+  and `LookupPermissionSetARN` read groups filled by a directory sync and
+  permission sets made by hand. The instance ARN, principal ids, account ids,
+  permission set ARNs, managed policy ARNs and the provider come from the
+  caller, so no ARN or account id lives in the package. Names from a hook;
+  `LegacyTopLevel` adds a `noParent` alias per child, and an assignment's
+  `LegacyNames` add earlier-name aliases. Refusals are reported together.
+
 ## v0.5.0
 
 - `pkg/engine/guardduty`: `truvity:aws-structure:AccountRegionGuardDuty`, the
