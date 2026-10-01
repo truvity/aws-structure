@@ -5,6 +5,17 @@ them, and for anything breaking, what to do.
 
 ## v0.6.0
 
+- `pkg/engine/org`: `truvity:aws-structure:OrganizationalUnit`, one
+  organizational unit with its member accounts as a Pulumi component. The unit
+  and every account are protected and retained on delete; nothing else is. The
+  organization is only read (`LookupRootID`), never managed. The parent id,
+  names, emails and the provider come from the caller. Names from a hook;
+  `LegacyTopLevel` adds a `noParent` alias per child. A unit or account that
+  carries an id or SCPs is refused. Refusals are reported together.
+  `SCPs` renders the eight service control policy documents from typed values
+  as valid JSON under 5120 bytes, built from the caller's partition,
+  management account id, allowed regions and bucket patterns. They stay
+  dormant: nothing creates or attaches a policy.
 - `pkg/engine/sso`: IAM Identity Center access as Pulumi components.
   `truvity:aws-structure:PermissionSet` is one permission set with its AWS
   managed policy attachments, optional inline policy and optional permissions

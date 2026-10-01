@@ -344,3 +344,81 @@ name.
 - `sso.LookupPermissionSetARN(ctx, instanceARN, name, provider)` reads the ARN
   of an existing permission set by name: for a set made by hand that this
   package does not manage.
+
+## `pkg/engine/org`
+
+The organizational structure, as one component per organizational unit, plus the
+service control policy documents, which are rendered and never attached. The
+boundary is the OU: an account is created inside exactly one OU and takes its id
+as its parent, so the unit and its member accounts are created, protected and
+reviewed together. An account is not its own component, and nothing spans the
+organization, so a stack may manage some units only.
+
+The organization is never managed. `org.LookupRootID(ctx, provider)` reads it
+and returns the id of its root, the parent of a top-level unit; the package has
+no resource for the organization and none is planned until the legacy owner of
+it is decommissioned. The parent id, every unit and account name, every email,
+the partition, the management account id, the regions and the bucket patterns
+are caller inputs: the package carries none. The provider is the
+management account's and is never defaulted.
+
+### `truvity:aws-structure:OrganizationalUnit`
+
+```go
+rootID, err := org.LookupRootID(ctx, provider)
+u, err := org.New(ctx, "unit-"+name, &org.Args{
+	Unit:     registry.OU{Name: "unit-a"},
+	ParentID: pulumi.String(rootID),               // the root's id, or another unit's id
+	Accounts: []registry.Account{{Name: "acct-a", Email: "a@example.test"}},
+	Provider: provider,
+	Names:    func(c org.Child) string { /* the names your stack already uses */ },
+	LegacyTopLevel: true,                           // adopting resources created without a parent
+})
+// u.Unit is the OU resource (its ID is a nested unit's ParentID); u.Accounts is by name.
+```
+
+Children (all registered under the component with Provider):
+
+| Child | Type | Default name | Notes |
+| --- | --- | --- | --- |
+| Unit | `aws:organizations/organizationalUnit:OrganizationalUnit` | `<c>-ou` | `Unit.Name` under `ParentID`. **Protected and retained on delete** |
+| Account | `aws:organizations/account:Account` | `<c>-account-<name>` | one per `Accounts`, in order; `Name`, `Email`, parent is the unit, `Tags` only when non-empty; depends on the unit. **Protected and retained on delete** |
+
+`Names` receives a `Child{Component, Kind, Unit, Account}` (`Account` is empty
+for the unit). The names it returns are part of the URNs and must be unique.
+With `LegacyTopLevel` every child carries one alias with `noParent`, the same
+type and the name `Names` gives it.
+
+Unit and accounts are protected and retained on delete, as before the
+extraction; nothing else is. `Unit.Parent`, `Unit.Reason` and
+`Account.BaselineExempt` are not read.
+
+Refused before anything is registered, all reported at once: no `Unit.Name`,
+`ParentID` or `Provider`; an account without `Name` or `Email`; a repeated
+account name; an account whose `OU` is another unit; a unit or account with an
+`ID` (adoption by import is not built) or with `SCPs` (they are dormant); and a
+naming hook returning an empty or repeated name.
+
+### Service control policies (dormant)
+
+`org.SCPs(org.SCPParams{...})` returns eight `registry.SCP`, in a fixed order:
+`deny-leave-org`, `protect-cloudtrail`, `protect-audit-logs`, `deny-root-user`,
+`restrict-regions`, `deny-data-export`, `require-encryption` and
+`deny-public-access`. Each document is built from typed values and rendered as
+indented JSON, then checked to be valid JSON of at most 5120 bytes
+(`registry.MaxSCPBytes`).
+
+`SCPParams` is all caller input and all required: `Partition` (the word after
+`arn:`), `ManagementAccountID` (the one account allowed to change CloudTrail),
+`AllowedRegions` (written in the order given), `ReplicationExemptBuckets` and
+`PublicAccessBlockExemptBuckets` (S3 bucket name patterns). Every problem is
+reported at once.
+
+Nothing here creates a policy or an attachment: no component takes SCPs, and an
+OU or account that lists some is refused. The scope the policies had in the
+estate they were extracted from, for whoever activates them (behind the lockout
+check of docs/decisions/0002-safety.md, on a test OU first): the organization
+root for `deny-leave-org`, `protect-cloudtrail`, `protect-audit-logs` and
+`restrict-regions`; every unit but the management one for `deny-root-user`; the
+customer unit alone for `deny-data-export`, `require-encryption` and
+`deny-public-access`.
