@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.6.0
 
 - `pkg/engine/sso`: IAM Identity Center access as Pulumi components.
   `truvity:aws-structure:PermissionSet` is one permission set with its AWS
