@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.3.0
 
 - `pkg/engine/iam`: `truvity:aws-structure:AccountIAM`, the per-account
   IAM controls as a Pulumi component: the account password policy
