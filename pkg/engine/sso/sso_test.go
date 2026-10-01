@@ -559,7 +559,10 @@ func TestAssignmentsRefusalReportsEveryProblemAtOnce(t *testing.T) {
 func TestLookups(t *testing.T) {
 	rec := &recorder{}
 
-	var gotIDs map[string]string
+	var (
+		idsMu  sync.Mutex
+		gotIDs map[string]string
+	)
 
 	var setARN string
 
@@ -579,7 +582,14 @@ func TestLookups(t *testing.T) {
 		for k, v := range ids {
 			k := k
 
-			v.ApplyT(func(s string) string { gotIDs[k] = s; return s })
+			v.ApplyT(func(s string) string {
+				idsMu.Lock()
+				defer idsMu.Unlock()
+
+				gotIDs[k] = s
+
+				return s
+			})
 		}
 
 		setARN, err = sso.LookupPermissionSetARN(ctx, "instance-ref", "set-a", p)
