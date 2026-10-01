@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## v0.6.0
+## v0.7.0
 
 - `pkg/engine/org`: `truvity:aws-structure:OrganizationalUnit`, one
   organizational unit with its member accounts as a Pulumi component. The unit
@@ -16,6 +16,9 @@ them, and for anything breaking, what to do.
   as valid JSON under 5120 bytes, built from the caller's partition,
   management account id, allowed regions and bucket patterns. They stay
   dormant: nothing creates or attaches a policy.
+
+## v0.6.0
+
 - `pkg/engine/sso`: IAM Identity Center access as Pulumi components.
   `truvity:aws-structure:PermissionSet` is one permission set with its AWS
   managed policy attachments, optional inline policy and optional permissions
