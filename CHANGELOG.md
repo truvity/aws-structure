@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.2.0
 
 - `pkg/engine/baseline`: `truvity:aws-structure:AccountBaseline`, the
   per-account baseline as a Pulumi component: EBS default encryption and
