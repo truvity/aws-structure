@@ -139,15 +139,15 @@ func (a *Args) Validate() error {
 
 	b := a.Baseline
 	if b.PasswordPolicy != nil {
-		errs = append(errs, errors.New("args: Baseline.PasswordPolicy is not implemented by this component"))
+		errs = append(errs, errors.New("args: Baseline.PasswordPolicy is not implemented by this component (see pkg/engine/iam)"))
 	}
 
 	if b.AuditorRole != nil {
-		errs = append(errs, errors.New("args: Baseline.AuditorRole is not implemented by this component"))
+		errs = append(errs, errors.New("args: Baseline.AuditorRole is not implemented by this component (see pkg/engine/iam)"))
 	}
 
 	if len(b.Boundaries) > 0 {
-		errs = append(errs, errors.New("args: Baseline.Boundaries is not implemented by this component"))
+		errs = append(errs, errors.New("args: Baseline.Boundaries is not implemented by this component (see pkg/engine/iam)"))
 	}
 
 	if b.EBSDefaultEncryption && len(b.Regions) == 0 {

@@ -3,6 +3,17 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- `pkg/engine/iam`: `truvity:aws-structure:AccountIAM`, the per-account
+  IAM controls as a Pulumi component: the account password policy
+  (`registry.PasswordPolicy`), boundary policies (`registry.Boundary`) and an
+  auditor role with its trust policy, AWS-managed attachments and an optional
+  customer-managed policy. The provider comes from the caller (boundaries may
+  take their own); names from a hook; `LegacyTopLevel` adds a `noParent` alias
+  per child. No document or ARN lives in the package. `AccountBaseline` still
+  refuses these fields and now points at the new component.
+
 ## v0.2.0
 
 - `pkg/engine/baseline`: `truvity:aws-structure:AccountBaseline`, the

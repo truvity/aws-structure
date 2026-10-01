@@ -61,4 +61,68 @@ Refused before anything is registered, all reported at once: no `Account`; no
 provider for a region the component needs; an empty or repeated region; EBS
 encryption without regions; a naming hook returning an empty or repeated name;
 and `Baseline.PasswordPolicy`, `AuditorRole` or `Boundaries`, which this
-version does not implement (refused by name rather than ignored).
+component does not implement (refused by name rather than ignored): they belong
+to `pkg/engine/iam`.
+
+## `pkg/engine/iam`
+
+`truvity:aws-structure:AccountIAM` deploys the IAM controls of one account:
+the password policy, boundary policies and an auditor role. One component per
+account. It is separate from `AccountBaseline` because IAM is global to the
+account (one provider, no regions) while the baseline is per region, and
+because an estate may deploy the two from different stacks, where one
+component cannot span both.
+
+```go
+c, err := iam.New(ctx, "iam-"+account, &iam.Args{
+	Account:        account,
+	PasswordPolicy: &registry.PasswordPolicy{MinimumLength: 14, MaxAgeDays: 90, ReusePrevention: 24 /* ... */},
+	Boundaries:     []registry.Boundary{{Name: "boundary-a", Document: docA}},
+	AuditorRole: &iam.AuditorRole{
+		Name:                "auditor",
+		TrustedPrincipal:    principalARN, // who may assume it
+		ExternalID:          externalID,   // optional
+		ManagedPolicies:     []string{managedARN},
+		Policy:              &iam.Policy{Name: "AuditorExtra", Document: doc}, // optional
+		PermissionsBoundary: boundaryARN,
+	},
+	Provider:         provider,         // this account's provider
+	BoundaryProvider: boundaryProvider, // optional: nil means Provider
+	Names:            func(c iam.Child) string { /* the names your stack already uses */ },
+	LegacyTopLevel:   true,             // adopting resources created without a parent
+})
+```
+
+The component carries no policy document, ARN or account id of its own: every
+one is a caller input. Each of `PasswordPolicy`, `Boundaries` and
+`AuditorRole` is optional.
+
+Children (all registered under the component, none protected):
+
+| Child | Type | Default name | Created when |
+| --- | --- | --- | --- |
+| Password policy | `aws:iam/accountPasswordPolicy:AccountPasswordPolicy` | `<c>-password-policy` | `PasswordPolicy` set; users may change their own password |
+| Boundary | `aws:iam/policy:Policy` | `<c>-boundary-<name>` | one per `Boundaries` entry, created with `BoundaryProvider` |
+| Auditor policy | `aws:iam/policy:Policy` | `<c>-auditor-policy` | `AuditorRole.Policy` set |
+| Auditor role | `aws:iam/role:Role` | `<c>-auditor-role` | `AuditorRole` set; trust policy names `TrustedPrincipal` and, when set, `sts:ExternalId` |
+| Managed attachment | `aws:iam/rolePolicyAttachment:RolePolicyAttachment` | `<c>-auditor-managed-<last element of the ARN>` | one per `AuditorRole.ManagedPolicies` |
+| Policy attachment | `aws:iam/rolePolicyAttachment:RolePolicyAttachment` | `<c>-auditor-policy-attachment` | `AuditorRole.Policy` set |
+
+`Names` receives a `Child{Component, Kind, Account, Name}`; `Name` is the
+boundary name, the policy name, the role name or the managed-policy ARN,
+depending on `Kind`. The names it returns are part of the URNs and must be
+unique. With `LegacyTopLevel` every child carries one alias with `noParent`, the
+same type and the name `Names` gives it, so adopting existing resources is not
+a replace.
+
+`AuditorRole` is not `registry.AuditorRole`: that one names an account of the
+organization, while the principal of an auditor is often an outside party and
+needs an ARN, an external id and policies the registry cannot carry.
+
+Refused before anything is registered, all reported at once: no `Account` or
+`Provider`; a password policy outside minimum length 8..128, age 0..1095 days
+or reuse 0..24; a boundary without a name, with a repeated name or with a
+document that is not JSON; an auditor role without a name, trusted principal or
+permissions boundary, with an empty or repeated managed policy, or with a
+policy lacking a name or a JSON document; and a naming hook returning an empty
+or repeated name.
