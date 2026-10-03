@@ -3,6 +3,14 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- `pkg/engine/guardduty`: new optional `Args.FindingPublishingFrequency`
+  (`FIFTEEN_MINUTES`, `ONE_HOUR` or `SIX_HOURS`) sets how often updates of an
+  existing finding are published to EventBridge. Empty keeps the provider
+  default, so existing callers see no change; the detector is updated in
+  place when the value is set. Any other value is refused.
+
 ## v0.7.0
 
 - `pkg/engine/org`: `truvity:aws-structure:OrganizationalUnit`, one

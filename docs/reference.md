@@ -215,6 +215,7 @@ c, err := guardduty.New(ctx, "guardduty-"+account+"-"+region, &guardduty.Args{
 	SNSTopicARN:         topicARN,      // may be in another account
 	PermissionsBoundary: boundaryARN,   // set on the EventBridge role
 	Provider:            provider,      // the account, in Region
+	FindingPublishingFrequency: "FIFTEEN_MINUTES", // optional; empty = provider default
 	Names:               func(c guardduty.Child) string { /* the names your stack already uses */ },
 	LegacyTopLevel:      true,          // adopting resources created without a parent
 })
@@ -229,7 +230,7 @@ created with Provider):
 
 | Child | Type | Default name | Notes |
 | --- | --- | --- | --- |
-| Detector | `aws:guardduty/detector:Detector` | `<c>-detector` | enabled |
+| Detector | `aws:guardduty/detector:Detector` | `<c>-detector` | enabled; `FindingPublishingFrequency` (`FIFTEEN_MINUTES`, `ONE_HOUR` or `SIX_HOURS`) when set, else the provider default (AWS: `SIX_HOURS`) |
 | EventBridge role | `aws:iam/role:Role` | `<c>-eventbridge-role` | named `eventbridge-sns-<region>`; trusts `events.amazonaws.com`; `PermissionsBoundary` |
 | Role policy | `aws:iam/rolePolicy:RolePolicy` | `<c>-eventbridge-policy` | `sns-publish`: `sns:Publish` on `SNSTopicARN` |
 | Rule | `aws:cloudwatch/eventRule:EventRule` | `<c>-rule` | named `guardduty-findings-<region>`; matches `aws.guardduty` / `GuardDuty Finding` |
@@ -241,7 +242,8 @@ child carries one alias with `noParent`, the same type and the name `Names`
 gives it, so adopting existing resources is not a replace.
 
 Refused before anything is registered, all reported at once: no `Account`,
-`Region` or `Provider`; no `SNSTopicARN` or `PermissionsBoundary`; and a naming
+`Region` or `Provider`; no `SNSTopicARN` or `PermissionsBoundary`; a
+`FindingPublishingFrequency` that is none of the three values; and a naming
 hook returning an empty or repeated name.
 
 ## `pkg/engine/sso`

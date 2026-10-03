@@ -236,6 +236,36 @@ func TestInputs(t *testing.T) {
 	}
 }
 
+func TestFindingPublishingFrequency(t *testing.T) {
+	regs, err := run(t, full(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, set := by(regs)["gd-acct-region-a-detector"].inputs["findingPublishingFrequency"]; set {
+		t.Error("frequency set although the arg is empty")
+	}
+
+	a := full()
+	a.FindingPublishingFrequency = "FIFTEEN_MINUTES"
+
+	regs, err = run(t, a, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := by(regs)["gd-acct-region-a-detector"].inputs["findingPublishingFrequency"].StringValue(); got != "FIFTEEN_MINUTES" {
+		t.Errorf("frequency = %q", got)
+	}
+
+	a = full()
+	a.FindingPublishingFrequency = "EVERY_SECOND"
+
+	if _, err = run(t, a, false); err == nil || !strings.Contains(err.Error(), "FindingPublishingFrequency") {
+		t.Errorf("err = %v, want a FindingPublishingFrequency refusal", err)
+	}
+}
+
 func TestRefusals(t *testing.T) {
 	cases := map[string]struct {
 		mutate     func(a *guardduty.Args)
