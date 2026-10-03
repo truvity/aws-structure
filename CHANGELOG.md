@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.8.0
 
 - `pkg/engine/guardduty`: new optional `Args.FindingPublishingFrequency`
   (`FIFTEEN_MINUTES`, `ONE_HOUR` or `SIX_HOURS`) sets how often updates of an
