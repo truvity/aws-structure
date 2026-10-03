@@ -80,6 +80,13 @@ type Args struct {
 	// Provider is the AWS provider of the account in Region. Required.
 	Provider pulumi.ProviderResource
 
+	// FindingPublishingFrequency is how often updates of an existing finding
+	// are published to EventBridge: FIFTEEN_MINUTES, ONE_HOUR or SIX_HOURS.
+	// Empty leaves the provider default (AWS's own, SIX_HOURS), so an
+	// existing caller is unchanged. New findings are published at once
+	// whatever this is.
+	FindingPublishingFrequency string
+
 	// Names overrides the logical names of the children. Nil uses
 	// DefaultName.
 	Names NameFunc
@@ -117,6 +124,14 @@ func (a *Args) Validate() error {
 
 	if a.PermissionsBoundary == nil {
 		errs = append(errs, errors.New("args: PermissionsBoundary is unset"))
+	}
+
+	switch a.FindingPublishingFrequency {
+	case "", "FIFTEEN_MINUTES", "ONE_HOUR", "SIX_HOURS":
+	default:
+		errs = append(errs, fmt.Errorf(
+			"args: FindingPublishingFrequency %q is not FIFTEEN_MINUTES, ONE_HOUR or SIX_HOURS",
+			a.FindingPublishingFrequency))
 	}
 
 	errs = append(errs, a.checkNames("")...)
@@ -195,9 +210,12 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 		return o
 	}
 
-	if _, err := guardduty.NewDetector(ctx, child(KindDetector), &guardduty.DetectorArgs{
-		Enable: pulumi.Bool(true),
-	}, opt()...); err != nil {
+	detector := &guardduty.DetectorArgs{Enable: pulumi.Bool(true)}
+	if args.FindingPublishingFrequency != "" {
+		detector.FindingPublishingFrequency = pulumi.String(args.FindingPublishingFrequency)
+	}
+
+	if _, err := guardduty.NewDetector(ctx, child(KindDetector), detector, opt()...); err != nil {
 		return nil, fmt.Errorf("create detector in %s/%s: %w", args.Account, args.Region, err)
 	}
 
