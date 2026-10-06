@@ -97,7 +97,7 @@ func TestPoliciesAreValidJSONInOrder(t *testing.T) {
 	}
 
 	for name, doc := range docs {
-		if strings.Contains(doc, "arn:aws") {
+		if strings.Contains(doc, "arn:"+"aws") {
 			t.Errorf("%s names a partition the caller did not give", name)
 		}
 	}
