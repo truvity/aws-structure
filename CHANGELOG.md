@@ -12,6 +12,21 @@ them, and for anything breaking, what to do.
   Google credentials, the group query and the partition are caller inputs.
   `Args.Validate` refuses a bad set before anything is registered.
 
+## v0.13.0
+
+- `pkg/engine/sso`: `SetSpec`, `DeploySets` (one PermissionSet per spec, named
+  `sso-ps-<key>`), `Effective` (inheritance, one level deep), `DeployAssignments`
+  (grants expanded by identity (scope, set, group), emitted in sorted order, one
+  AccountAssignments per scope, with the pre-identity names as aliases),
+  `DeployLegacyAssignments` (hand-made permission sets assigned by name) and
+  `LookupInstance`.
+- `pkg/boundary`: the permissions boundary policy documents of an organization
+  (admin, deploy, default and viewer, audit, project, and the ACK IAM, CAPA and
+  EKS Auto Mode provisioners) built from a caller hierarchy of who may delegate
+  to whom. Names, prefix and partition are caller inputs.
+- `pkg/engine/iam`: `VantaAuditorRole`, the auditor role of an account for a
+  Vanta integration, from the vendor account, external id and names.
+
 ## v0.11.0
 
 - `pkg/alerting`: the central security alerting of an organization.
