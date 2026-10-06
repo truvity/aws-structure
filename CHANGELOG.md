@@ -3,6 +3,19 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## v0.14.0
+
+- `pkg/fleet`: the per-account loops of an organization's root stack over the
+  engines. `Fleet` holds the member accounts, the expected set (a drifted set is
+  refused), the regions and the skip list; it builds a cross-account provider
+  per account and region through the organization access role and deploys one
+  component per account for the baseline (`baseline-<account>`), the IAM
+  controls (`iam-<account>`, `iam-root`), CloudTrail (`cloudtrail-<account>`)
+  and GuardDuty (`guardduty-<account>-<region>`). `DeployUnits` creates the
+  organizational units and their accounts (`orgunit-<ou>`) and exports the
+  account ids. Accounts, regions, profile, bucket name formats and the boundary
+  name are caller inputs.
+
 ## v0.13.0
 
 - `pkg/engine/sso`: `SetSpec`, `DeploySets` (one PermissionSet per spec, named
