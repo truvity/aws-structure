@@ -191,3 +191,26 @@ func TestDeliveryPolicyIsJSON(t *testing.T) {
 		t.Errorf("throttle = %v", v["throttlePolicy"])
 	}
 }
+
+func TestDeliveryPolicyWithinAWSLimits(t *testing.T) {
+	var p struct {
+		H map[string]any `json:"healthyRetryPolicy"`
+	}
+	if err := json.Unmarshal([]byte(alerting.DeliveryPolicy()), &p); err != nil {
+		t.Fatal(err)
+	}
+
+	n := p.H["numRetries"].(float64)
+	if n < 1 || n > 100 {
+		t.Fatalf("numRetries %v outside 0-100", n)
+	}
+
+	phases := p.H["numNoDelayRetries"].(float64) + p.H["numMinDelayRetries"].(float64) + p.H["numMaxDelayRetries"].(float64)
+	if phases > n {
+		t.Fatalf("phase retries %v exceed numRetries %v", phases, n)
+	}
+
+	if p.H["minDelayTarget"].(float64) < 1 || p.H["maxDelayTarget"].(float64) > 3600 {
+		t.Fatal("delay targets outside 1-3600s")
+	}
+}
