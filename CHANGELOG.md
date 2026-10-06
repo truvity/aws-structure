@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.9.0
 
 - `pkg/backend`: the storage of a Pulumi state backend. `NewBucket` creates
   one account's state bucket (KMS key with rotation and alias, versioning,
