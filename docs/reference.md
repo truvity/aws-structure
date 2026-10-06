@@ -424,3 +424,32 @@ root for `deny-leave-org`, `protect-cloudtrail`, `protect-audit-logs` and
 `restrict-regions`; every unit but the management one for `deny-root-user`; the
 customer unit alone for `deny-data-export`, `require-encryption` and
 `deny-public-access`.
+
+## `pkg/backend`
+
+The storage a Pulumi state backend lives in, per account. Plain resources, no
+component: the logical names are the API.
+
+```go
+b := backend.Bucket{
+	Account: "acct", AccountID: id, Name: backend.BucketName(id, "region-a"),
+	KMSAlias: backend.KMSAlias(), Region: "region-a",
+	ReplicaRegion: "region-b", ReplicaName: backend.BucketName(id, "region-b"),
+}
+res, err := backend.NewBucket(ctx, logger, b, provider)
+err = backend.NewReplication(ctx, logger, b, res, provider, backend.Replication{
+	Profile: profile, AssumeRoleARN: roleOrNil, Partition: "aws", BoundaryName: "boundary",
+})
+```
+
+| Logical name | Type |
+| --- | --- |
+| `pulumi-state-<account>/kms-key`, `/kms-alias` | KMS key (rotation on), alias |
+| `pulumi-state-<account>/bucket` | S3 bucket |
+| `.../bucket-versioning`, `/bucket-encryption`, `/bucket-pab`, `/bucket-https-policy` | versioning, SSE-KMS with bucket key, public access block, TLS-only policy |
+| `.../bucket-lifecycle` | noncurrent versions expire after 30 days |
+| `pulumi-state-<account>-replica-provider` | provider of the replica region |
+| `pulumi-state-<account>-replica/{kms-key,kms-alias,bucket,bucket-*}` | the replica and its baseline |
+| `pulumi-state-<account>-replica/{replication-role,replication-policy,replication-config}` | replication |
+
+Outputs: `<account>-backend-url`, `<account>-bucket-name`, `<account>-kms-key-arn`.

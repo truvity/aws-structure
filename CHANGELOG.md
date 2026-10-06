@@ -3,6 +3,19 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- `pkg/backend`: the storage of a Pulumi state backend. `NewBucket` creates
+  one account's state bucket (KMS key with rotation and alias, versioning,
+  SSE-KMS, public access blocked, TLS-only policy, 30-day noncurrent
+  expiry); `NewReplication` adds a cross-region replica (provider, key,
+  bucket, replication role and policy, replication configuration). Logical
+  names are `pulumi-state-<account>/...` and `pulumi-state-<account>-replica/...`,
+  so a stack that already holds these resources adopts the package with an
+  empty preview. Bucket names, the key alias, regions, the partition and the
+  name of the permissions boundary are caller inputs; `Bucket.Validate` and
+  `ValidateSet` refuse a bad set before anything is registered.
+
 ## v0.8.0
 
 - `pkg/engine/guardduty`: new optional `Args.FindingPublishingFrequency`
