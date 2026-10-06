@@ -468,3 +468,19 @@ the API.
 | `DeployPrivateEntryRecords` | `private-entry-<slug>` (A) and `cross-cluster-<slug>` (CNAME at the load balancer found by `LoadBalancerTag`); the slug function is the caller's |
 | `NewDeviceRecord` | one A record at the IPv4 of the live device among the candidates (`PickDevice`: newest `LastSeen` wins, a tie is refused) |
 | `LookupZoneIDByName` | an SDK lookup, private zones without a VPC association included |
+
+## `pkg/alerting`
+
+`alerting.Security(ctx, logger, alerting.Args{...})` deploys, in the management
+account, per region: `alerting-provider-<region>`, `security-alerts-<region>`
+(topic), `security-alerts-policy-<region>`, `alert-ingress-subscription-<region>`;
+in the primary region also `alert-ingress-heartbeat-rule` and
+`alert-ingress-heartbeat-target`; and once `alerting-provider-iam`,
+`chatbot-slack-role`, `chatbot-readonly-access` and `security-alerts-chatbot`.
+It returns the topic ARN of each region. `alerting.DeliveryPolicy()` is the
+subscription delivery policy.
+
+`guardduty.NewImported` (in `pkg/engine/guardduty`) adopts an existing detector
+and routes its findings: `<prefix>-detector` (imported, retained),
+`<prefix>-rule`, `<prefix>-eventbridge-role`, `<prefix>-eventbridge-policy`,
+`<prefix>-target`.
