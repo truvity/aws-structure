@@ -3,6 +3,41 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## v0.11.0
+
+- `pkg/alerting`: the central security alerting of an organization.
+  `Security` creates one SNS topic per region in the management account with a
+  topic policy that admits the organization's `eventbridge-sns-<region>`
+  roles, an HTTPS subscription to the receiver (with a retry and throttle
+  policy, `DeliveryPolicy`), a heartbeat schedule with its own policy
+  statement in the primary region, the Chatbot role (bounded, read-only) and
+  the Slack channel configuration over every topic. It returns the topic ARNs
+  by region. The organization id, Slack ids, endpoint, topic and role names,
+  partition and boundary name are caller inputs.
+- `pkg/engine/guardduty`: `NewImported` adopts the existing GuardDuty detector
+  of an account that is not a member (the management account): the detector is
+  imported and retained on delete, a rule matches every finding and its target
+  publishes to the topic as the account's `eventbridge-sns-<region>` role,
+  which it creates, bounded by the boundary the caller names.
+
+## v0.10.0
+
+- `pkg/dns`: Route 53 zones, delegation and the records an estate keeps in
+  them, as plain Pulumi resources. `NewPublicZone`, `NewPrivateZone` and
+  `Deploy` create or adopt zones (roots first) with the NS record that
+  delegates a child from its parent; a child private zone in another account
+  than its parent gets the parent zone associated with its VPC
+  (`AssociateZone`). `DeployRootZone` and `DeployEnvironmentZone` are the two
+  shapes an estate uses. `DeployPrivateEntryRecords` writes A records at a
+  pinned address and CNAMEs at a load balancer found by tag, refusing
+  wildcards and names outside the zone; `NewDeviceRecord` and `PickDevice`
+  write an A record at the live device among candidates, refusing a tie.
+  `LookupZoneIDByName` finds a zone through the AWS SDK, private zones
+  without a VPC association included. Adds the AWS SDK v2 `config` and
+  `route53` modules to go.mod. Logical names are `<prefix>/<zone>/{zone,
+  delegation,parent-assoc}`; zone names, accounts, profiles and hostnames are
+  caller inputs.
+
 ## v0.9.0
 
 - `pkg/backend`: the storage of a Pulumi state backend. `NewBucket` creates

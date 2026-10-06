@@ -484,3 +484,13 @@ subscription delivery policy.
 and routes its findings: `<prefix>-detector` (imported, retained),
 `<prefix>-rule`, `<prefix>-eventbridge-role`, `<prefix>-eventbridge-policy`,
 `<prefix>-target`.
+
+## `pkg/cost`
+
+`cost.Deploy(ctx, logger, cost.Args{...})`, in the payer account: `cost-alerts-provider`;
+`cost-budgets-topic`, `cost-anomalies-topic` with `-policy` and the subscriptions
+`cost-budgets-alert-ingress`, `cost-anomalies-alert-ingress`; `cost-budget-total`
+and `cost-budget-<account>`; `cost-anomaly-monitor-services` (imported, protected,
+retained), `cost-anomaly-monitor-<account>` (when `PerAccountMonitors`) and
+`cost-anomaly-subscription`; `compute-optimizer-enrollment`,
+`cost-allocation-tag-<key>` and `cost-category-<name>` when the spec asks.
