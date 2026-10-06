@@ -500,3 +500,11 @@ retained), `cost-anomaly-monitor-<account>` (when `PerAccountMonitors`) and
 `ssosync.Deploy(ctx, logger, ssosync.Args{...})`: `ssosync-lambda-role`, `ssosync-lambda-basic`,
 `ssosync-lambda-sso-policy`, `ssosync-log-group`, `ssosync-lambda`, `ssosync-scheduler-role`,
 `ssosync-scheduler-invoke-policy`, `ssosync-schedule`. Exports `ssosync_lambda_arn`.
+## `pkg/engine/sso` planning, `pkg/boundary`
+
+`sso.DeploySets` registers `sso-ps-<key>` (children `ps-<key>`, `ps-<key>-policy-<i>`,
+`ps-<key>-boundary`); `sso.DeployAssignments` registers `sso-assignments-<scope>` (children
+`assignment-<scope>-<set name>-<principal>`); `sso.DeployLegacyAssignments` registers
+`sso-legacy-assignments-<account>` (children `legacy-assignment-...`).
+`boundary.Policies(boundary.Spec{...})` returns the `registry.Boundary` list in the order admin,
+viewer, default, ACK IAM, CAPA, EKS Auto Mode node, deploy, project, audit.
