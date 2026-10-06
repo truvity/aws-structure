@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## v0.18.0
+
+- **`pkg/awsconfig`: the AWS CLI config file of a set of Identity Center accounts.** `Render` writes one `sso-session`, a `[default]` profile that mirrors a named one, and a profile for every (account, role) pair in the order given; `Account.Profiles` expands an account into one profile per role. The caller decides which accounts exist, which roles each carries (an account whose permission sets were never renamed carries the ones it has), the session and the daily driver; every profile signs in through the session the config names. `Render` refuses a missing session field, a profile name twice and a `Default` no section holds. The output is deterministic, so a checked-in copy can be compared with a fresh render. New package, additive.
+
 ## v0.17.0
 
 - `pkg/cost`: `Spec.Validate(partition)` reports every shape AWS refuses only at apply: account ids (12 digits) and names, repeated accounts, the default monitor's ARN for the partition, a cost category's account, its node pool names, service codes (not display names) and every literal value against AWS's category-value pattern. `Args.Validate` calls it, so a spec the old check accepted can now be refused. `NodePoolValue(pool)` is the `nodes-<pool>` value.
