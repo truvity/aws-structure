@@ -508,3 +508,9 @@ retained), `cost-anomaly-monitor-<account>` (when `PerAccountMonitors`) and
 `sso-legacy-assignments-<account>` (children `legacy-assignment-...`).
 `boundary.Policies(boundary.Spec{...})` returns the `registry.Boundary` list in the order admin,
 viewer, default, ACK IAM, CAPA, EKS Auto Mode node, deploy, project, audit.
+## `pkg/fleet`
+
+`fleet.Fleet{...}` with `Providers(ctx, prefix, regions)` (`<prefix>-<account>-<region>`),
+`Baseline`, `Trail`, `GuardDuty`, `IAM`; `fleet.DeployUnits`. Component names are
+`baseline-<account>`, `cloudtrail-<account>`, `guardduty-<account>-<region>`, `iam-<account>`,
+`iam-root`, `orgunit-<ou>`; the IAM boundary providers are `provider-<account>`.
