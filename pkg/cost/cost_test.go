@@ -139,7 +139,9 @@ func TestAccountMonitorSpecMatchesAWSNormalised(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := `{"And":null,"CostCategories":null,"Dimensions":{"Key":"LINKED_ACCOUNT","MatchOptions":["EQUALS"],"Values":["acct-ref"]},"Not":null,"Or":null,"Tags":null}`
+	want := `{"And":null,"CostCategories":null,` +
+		`"Dimensions":{"Key":"LINKED_ACCOUNT","MatchOptions":["EQUALS"],"Values":["acct-ref"]},` +
+		`"Not":null,"Or":null,"Tags":null}`
 	if string(got) != want {
 		t.Fatalf("spec drifted from AWS-normalised form\n got: %s\nwant: %s", got, want)
 	}
