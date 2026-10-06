@@ -494,3 +494,9 @@ and `cost-budget-<account>`; `cost-anomaly-monitor-services` (imported, protecte
 retained), `cost-anomaly-monitor-<account>` (when `PerAccountMonitors`) and
 `cost-anomaly-subscription`; `compute-optimizer-enrollment`,
 `cost-allocation-tag-<key>` and `cost-category-<name>` when the spec asks.
+
+## `pkg/ssosync`
+
+`ssosync.Deploy(ctx, logger, ssosync.Args{...})`: `ssosync-lambda-role`, `ssosync-lambda-basic`,
+`ssosync-lambda-sso-policy`, `ssosync-log-group`, `ssosync-lambda`, `ssosync-scheduler-role`,
+`ssosync-scheduler-invoke-policy`, `ssosync-schedule`. Exports `ssosync_lambda_arn`.
