@@ -3,15 +3,6 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## v0.12.0
-
-- `pkg/ssosync`: the Google Workspace to Identity Center sync. `Deploy` creates the
-  Lambda's role, log group and function (awslabs/ssosync, arm64), the EventBridge
-  scheduler role and a schedule that runs it every 15 minutes. The SCIM endpoint
-  and token are read from SSM Parameter Store; the artifact, the SSM names, the
-  Google credentials, the group query and the partition are caller inputs.
-  `Args.Validate` refuses a bad set before anything is registered.
-
 ## v0.13.0
 
 - `pkg/engine/sso`: `SetSpec`, `DeploySets` (one PermissionSet per spec, named
@@ -26,6 +17,15 @@ them, and for anything breaking, what to do.
   to whom. Names, prefix and partition are caller inputs.
 - `pkg/engine/iam`: `VantaAuditorRole`, the auditor role of an account for a
   Vanta integration, from the vendor account, external id and names.
+
+## v0.12.0
+
+- `pkg/ssosync`: the Google Workspace to Identity Center sync. `Deploy` creates the
+  Lambda's role, log group and function (awslabs/ssosync, arm64), the EventBridge
+  scheduler role and a schedule that runs it every 15 minutes. The SCIM endpoint
+  and token are read from SSM Parameter Store; the artifact, the SSM names, the
+  Google credentials, the group query and the partition are caller inputs.
+  `Args.Validate` refuses a bad set before anything is registered.
 
 ## v0.11.0
 
