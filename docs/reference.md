@@ -453,3 +453,18 @@ err = backend.NewReplication(ctx, logger, b, res, provider, backend.Replication{
 | `pulumi-state-<account>-replica/{replication-role,replication-policy,replication-config}` | replication |
 
 Outputs: `<account>-backend-url`, `<account>-bucket-name`, `<account>-kms-key-arn`.
+
+## `pkg/dns`
+
+Route 53 zones, delegation and records. Plain resources: the logical names are
+the API.
+
+| Function | Creates |
+| --- | --- |
+| `NewPublicZone`, `NewPrivateZone`, `Deploy` | `<prefix>/<zone>/zone`, and `<prefix>/<zone>/delegation` (NS in the parent) when a parent is named. `Import: true` adopts an existing zone and its NS record instead |
+| `AssociateZone` | `<resource>/assoc`, preceded by `<resource>/auth` when the VPC is in another account |
+| `DeployRootZone` | a root private zone; exports `root-private-zone-{id,name,name-servers}` |
+| `DeployEnvironmentZone` | a child private zone delegated from the root (`private-zone-{id,name,name-servers}`) and, across accounts, the parent zone's association with the child's VPC |
+| `DeployPrivateEntryRecords` | `private-entry-<slug>` (A) and `cross-cluster-<slug>` (CNAME at the load balancer found by `LoadBalancerTag`); the slug function is the caller's |
+| `NewDeviceRecord` | one A record at the IPv4 of the live device among the candidates (`PickDevice`: newest `LastSeen` wins, a tie is refused) |
+| `LookupZoneIDByName` | an SDK lookup, private zones without a VPC association included |
