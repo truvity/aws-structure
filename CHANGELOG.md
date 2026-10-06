@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## v0.16.0
+
+- `pkg/engine/sso`: `GrantsFor` turns one scope's access matrix into the `Grant`s `DeployAssignments` expands. The caller gives a table from its access levels to permission set names, the roles that hold a level on the scope (`Holder`) and an optional filter for groups that must not be assigned; the result is sorted by role, set and group. Additive.
+
 ## v0.15.0
 
 - `pkg/boundary`: `Spec.Validate` now checks the delegation graph as well as the required names. A delegate that is not an entry of `Hierarchy`, a leaf shape (`Names.Default`, `Names.Project`, `Names.Audit`) that delegates, and a cycle through the delegates are each reported. A hierarchy that listed a delegate without an entry of its own is now refused: add the entry.
