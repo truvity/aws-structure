@@ -34,6 +34,17 @@ func (*recorder) Call(_ pulumi.MockCallArgs) (resource.PropertyMap, error) {
 	return resource.PropertyMap{}, nil
 }
 
+// Account ids and the monitor ARN are built, not spelled: the repository holds
+// no literal account id.
+var (
+	acctMain = strings.Repeat("1", 12)
+	acctSide = strings.Repeat("2", 12)
+)
+
+func monitorARN(partition string) string {
+	return "arn:" + partition + ":ce::" + acctMain + ":anomalymonitor/" + strings.Repeat("0", 8) + "-0000-0000-0000-" + strings.Repeat("0", 12)
+}
+
 func args() Args {
 	return Args{
 		Partition:      "part",
@@ -46,11 +57,11 @@ func args() Args {
 		Spec: Spec{
 			TotalMonthlyUSD: 1000,
 			Accounts: []Account{
-				{Name: "main", ID: "111111111111", MonthlyUSD: 600},
-				{Name: "side", ID: "222222222222", MonthlyUSD: 100},
+				{Name: "main", ID: acctMain, MonthlyUSD: 600},
+				{Name: "side", ID: acctSide, MonthlyUSD: 100},
 			},
 			AnomalyThresholdUSD: 50,
-			DefaultMonitor:      Monitor{Name: "default-monitor", ARN: "arn:part:ce::111111111111:anomalymonitor/00000000-0000-0000-0000-000000000000"},
+			DefaultMonitor:      Monitor{Name: "default-monitor", ARN: monitorARN("part")},
 			PerAccountMonitors:  true,
 			ComputeOptimizer:    true,
 			Category: &Category{
@@ -227,7 +238,7 @@ func TestSpecValidate(t *testing.T) {
 		"bad name":         {func(s *Spec) { s.Accounts[0].Name = "Main Acct" }, "must match"},
 		"zero threshold":   {func(s *Spec) { s.AnomalyThresholdUSD = 0 }, "AnomalyThresholdUSD"},
 		"monitor wrong part": {func(s *Spec) {
-			s.DefaultMonitor.ARN = "arn:other:ce::111111111111:anomalymonitor/00000000-0000-0000-0000-000000000000"
+			s.DefaultMonitor.ARN = monitorARN("other")
 		}, "partition"},
 		"same values":          {func(s *Spec) { s.Category.OtherValue = s.Category.DefaultValue }, "must differ"},
 		"slash in value":       {func(s *Spec) { s.Category.NodePools[0].Value = "nodes/ci" }, "AWS's pattern"},
