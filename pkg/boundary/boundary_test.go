@@ -22,8 +22,40 @@ func spec() boundary.Spec {
 			{Name: "bound@admin", Delegates: []string{"bound@deploy", "bound@project", "bound@tech-iam", "bound@tech-capa"}},
 			{Name: "bound@deploy", Delegates: []string{"bound@project", "bound@default"}, EnforcesTags: []string{"project"}},
 			{Name: "bound@tech-iam", Delegates: []string{"bound@default", "bound@project"}},
+			{Name: "bound@tech-capa"},
 			{Name: "bound@project"},
+			{Name: "bound@default"},
 		},
+	}
+}
+
+func TestValidateHierarchy(t *testing.T) {
+	s := spec()
+	if err := s.Validate(); err != nil {
+		t.Fatalf("valid spec refused: %v", err)
+	}
+
+	for name, tc := range map[string]struct {
+		mutate func(*boundary.Spec)
+		want   string
+	}{
+		"undefined delegate": {func(s *boundary.Spec) {
+			s.Hierarchy[1].Delegates = append(s.Hierarchy[1].Delegates, "bound@ghost")
+		}, `delegates to undefined boundary "bound@ghost"`},
+		"leaf delegates": {func(s *boundary.Spec) {
+			s.Hierarchy[4].Delegates = []string{"bound@default"}
+		}, `leaf boundary "bound@project" must not have delegates`},
+		"cycle": {func(s *boundary.Spec) {
+			s.Hierarchy[3].Delegates = []string{"bound@admin"}
+		}, "cycle: bound@admin -> "},
+	} {
+		s := spec()
+		tc.mutate(&s)
+
+		err := s.Validate()
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want containing %q", name, err, tc.want)
+		}
 	}
 }
 

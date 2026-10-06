@@ -71,7 +71,87 @@ func (s *Spec) Validate() error {
 		}
 	}
 
+	errs = append(errs, s.validateHierarchy()...)
+
 	return errors.Join(errs...)
+}
+
+// validateHierarchy checks the delegation graph: every delegate is an entry of
+// the hierarchy, the leaf shapes (Names.Default, Names.Project and
+// Names.Audit) delegate to nothing, and no boundary can reach itself through
+// its delegates.
+func (s *Spec) validateHierarchy() []error {
+	var errs []error
+
+	adj := make(map[string][]string, len(s.Hierarchy))
+	for _, e := range s.Hierarchy {
+		adj[e.Name] = e.Delegates
+	}
+
+	leaves := map[string]bool{s.Names.Default: true, s.Names.Project: true, s.Names.Audit: true}
+	delete(leaves, "") // an empty name is reported by the required-names check
+
+	undefined := false
+
+	for _, e := range s.Hierarchy {
+		for _, d := range e.Delegates {
+			if _, ok := adj[d]; !ok {
+				undefined = true
+
+				errs = append(errs, fmt.Errorf("spec: boundary %q delegates to undefined boundary %q", e.Name, d))
+			}
+		}
+
+		if leaves[e.Name] && len(e.Delegates) > 0 {
+			errs = append(errs, fmt.Errorf("spec: leaf boundary %q must not have delegates", e.Name))
+		}
+	}
+
+	if undefined {
+		return errs
+	}
+
+	const (
+		white = iota
+		gray
+		black
+	)
+
+	colors := make(map[string]int, len(adj))
+
+	var visit func(name string, path []string) error
+
+	visit = func(name string, path []string) error {
+		colors[name] = gray
+		path = append(path, name)
+
+		for _, target := range adj[name] {
+			switch colors[target] {
+			case gray:
+				return fmt.Errorf("spec: boundary hierarchy cycle: %s", strings.Join(append(path, target), " -> "))
+			case white:
+				if err := visit(target, path); err != nil {
+					return err
+				}
+			}
+		}
+
+		colors[name] = black
+
+		return nil
+	}
+
+	for _, e := range s.Hierarchy {
+		if colors[e.Name] == white {
+			if err := visit(e.Name, nil); err != nil {
+				errs = append(errs, err)
+
+				break
+			}
+		}
+	}
+
+	return errs
 }
 
 // arn is the ARN pattern of a boundary policy of any account.
