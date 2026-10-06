@@ -19,6 +19,16 @@ them, and for anything breaking, what to do.
   imported and retained on delete, a rule matches every finding and its target
   publishes to the topic as the account's `eventbridge-sns-<region>` role,
   which it creates, bounded by the boundary the caller names.
+- `pkg/cost`: the cost alerting of the payer account. `Deploy` creates the
+  budgets and anomaly topics (each with a policy for one service principal and
+  an HTTPS subscription to the receiver), one monthly budget for the whole
+  organization and one per linked account, the adopted services anomaly
+  monitor with an optional custom monitor per account and one immediate
+  anomaly subscription, and, when the spec has them, Compute Optimizer
+  enrollment, the cost allocation tags and the cost category that splits one
+  account. The payer, accounts, amounts, monitor, category rules, topic names,
+  endpoint and partition are caller inputs; `Args.Validate` refuses a bad spec
+  before anything is registered.
 
 ## v0.10.0
 
