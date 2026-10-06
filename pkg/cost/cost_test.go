@@ -46,11 +46,11 @@ func args() Args {
 		Spec: Spec{
 			TotalMonthlyUSD: 1000,
 			Accounts: []Account{
-				{Name: "main", ID: "acct-main", MonthlyUSD: 600},
-				{Name: "side", ID: "acct-side", MonthlyUSD: 100},
+				{Name: "main", ID: "111111111111", MonthlyUSD: 600},
+				{Name: "side", ID: "222222222222", MonthlyUSD: 100},
 			},
 			AnomalyThresholdUSD: 50,
-			DefaultMonitor:      Monitor{Name: "default-monitor", ARN: "monitor-ref"},
+			DefaultMonitor:      Monitor{Name: "default-monitor", ARN: "arn:part:ce::111111111111:anomalymonitor/00000000-0000-0000-0000-000000000000"},
 			PerAccountMonitors:  true,
 			ComputeOptimizer:    true,
 			Category: &Category{
@@ -119,7 +119,7 @@ func TestRefusals(t *testing.T) {
 		t.Fatal("invalid args accepted")
 	}
 
-	for _, frag := range []string{"Endpoint is empty", "Spec.Accounts is empty", "DefaultMonitor.ARN is empty"} {
+	for _, frag := range []string{"Endpoint is empty", "Accounts is empty", "DefaultMonitor.ARN is empty"} {
 		if !strings.Contains(err.Error(), frag) {
 			t.Errorf("error %q lacks %q", err, frag)
 		}
@@ -128,7 +128,7 @@ func TestRefusals(t *testing.T) {
 	b := args()
 	b.Spec.Category.Account = "missing"
 
-	if err := b.Validate(); err == nil || !strings.Contains(err.Error(), "not in Spec.Accounts") {
+	if err := b.Validate(); err == nil || !strings.Contains(err.Error(), "not in Accounts") {
 		t.Errorf("a category over an unknown account must be refused: %v", err)
 	}
 }
@@ -209,5 +209,40 @@ func TestInheritedRulesCarryNoRuleOrValueAndFollowTheOtherAccountRule(t *testing
 
 	if otherAt < 0 || otherAt > firstInherited {
 		t.Errorf("the other-account rule is at %d, the first inherited rule at %d: it must come first", otherAt, firstInherited)
+	}
+}
+
+func TestSpecValidate(t *testing.T) {
+	a := args()
+	if err := a.Spec.Validate("part"); err != nil {
+		t.Fatalf("valid spec refused: %v", err)
+	}
+
+	for name, tc := range map[string]struct {
+		mutate func(*Spec)
+		want   string
+	}{
+		"bad account id":   {func(s *Spec) { s.Accounts[0].ID = "12" }, "12-digit"},
+		"repeated account": {func(s *Spec) { s.Accounts[1] = s.Accounts[0] }, "repeats"},
+		"bad name":         {func(s *Spec) { s.Accounts[0].Name = "Main Acct" }, "must match"},
+		"zero threshold":   {func(s *Spec) { s.AnomalyThresholdUSD = 0 }, "AnomalyThresholdUSD"},
+		"monitor wrong part": {func(s *Spec) {
+			s.DefaultMonitor.ARN = "arn:other:ce::111111111111:anomalymonitor/00000000-0000-0000-0000-000000000000"
+		}, "partition"},
+		"same values":          {func(s *Spec) { s.Category.OtherValue = s.Category.DefaultValue }, "must differ"},
+		"slash in value":       {func(s *Spec) { s.Category.NodePools[0].Value = "nodes/ci" }, "AWS's pattern"},
+		"service display name": {func(s *Spec) { s.Category.Services[0].Service = "Amazon EC2" }, "not a service code"},
+		"duplicate pool":       {func(s *Spec) { s.Category.NodePools = append(s.Category.NodePools, s.Category.NodePools[0]) }, "unique node pool"},
+	} {
+		a := args()
+		tc.mutate(&a.Spec)
+
+		if err := a.Spec.Validate("part"); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want containing %q", name, err, tc.want)
+		}
+	}
+
+	if NodePoolValue("ci") != "nodes-ci" {
+		t.Error("NodePoolValue")
 	}
 }

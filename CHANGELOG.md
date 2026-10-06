@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## v0.17.0
+
+- `pkg/cost`: `Spec.Validate(partition)` reports every shape AWS refuses only at apply: account ids (12 digits) and names, repeated accounts, the default monitor's ARN for the partition, a cost category's account, its node pool names, service codes (not display names) and every literal value against AWS's category-value pattern. `Args.Validate` calls it, so a spec the old check accepted can now be refused. `NodePoolValue(pool)` is the `nodes-<pool>` value.
+
 ## v0.16.0
 
 - `pkg/engine/sso`: `GrantsFor` turns one scope's access matrix into the `Grant`s `DeployAssignments` expands. The caller gives a table from its access levels to permission set names, the roles that hold a level on the scope (`Holder`) and an optional filter for groups that must not be assigned; the result is sorted by role, set and group. Additive.

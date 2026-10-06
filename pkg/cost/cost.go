@@ -157,16 +157,8 @@ func (a *Args) Validate() error {
 		}
 	}
 
-	if a.Spec.TotalMonthlyUSD <= 0 {
-		errs = append(errs, errors.New("args: Spec.TotalMonthlyUSD must be positive"))
-	}
-
-	if len(a.Spec.Accounts) == 0 {
-		errs = append(errs, errors.New("args: Spec.Accounts is empty"))
-	}
-
-	if c := a.Spec.Category; c != nil && a.accountID(c.Account) == "" {
-		errs = append(errs, fmt.Errorf("args: cost category account %q is not in Spec.Accounts", c.Account))
+	if err := a.Spec.Validate(a.Partition); err != nil {
+		errs = append(errs, err)
 	}
 
 	return errors.Join(errs...)
