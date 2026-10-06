@@ -1,6 +1,8 @@
 package guardduty_test
 
 import (
+	"io"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
@@ -316,5 +318,55 @@ func TestRefusalReportsEveryProblemAtOnce(t *testing.T) {
 		if !strings.Contains(err.Error(), w) {
 			t.Errorf("error lacks %q: %v", w, err)
 		}
+	}
+}
+
+func TestImportedAdoptsAndRoutes(t *testing.T) {
+	rec := &recorder{}
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		return guardduty.NewImported(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), guardduty.ImportedArgs{
+			Region:          "region-a",
+			Profile:         "prof",
+			ProviderName:    "imported-provider",
+			DetectorID:      "detector-ref",
+			SNSTopicARN:     pulumi.String("topic-ref"),
+			Partition:       "part",
+			BoundaryName:    "boundary",
+			Prefix:          "imp-region-a",
+			RuleName:        "findings-region-a",
+			RuleDescription: "route findings",
+			TargetID:        "imp-sns",
+		})
+	}, pulumi.WithMocks("proj", "stack", rec))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := by(rec.regs)
+	for _, name := range []string{
+		"imp-region-a-detector", "imp-region-a-rule", "imp-region-a-eventbridge-role",
+		"imp-region-a-eventbridge-policy", "imp-region-a-target",
+	} {
+		if _, ok := got[name]; !ok {
+			t.Errorf("missing %s; have %v", name, got)
+		}
+	}
+
+	if d := got["imp-region-a-detector"]; !d.retain {
+		t.Error("an imported detector is retained on delete")
+	}
+
+	if !strings.Contains(got["imp-region-a-eventbridge-role"].inputs["permissionsBoundary"].StringValue(), ":policy/boundary") {
+		t.Error("the role carries the named boundary")
+	}
+}
+
+func TestImportedRefusals(t *testing.T) {
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		return guardduty.NewImported(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), guardduty.ImportedArgs{})
+	}, pulumi.WithMocks("proj", "stack", &recorder{}))
+	if err == nil || !strings.Contains(err.Error(), "DetectorID is empty") || !strings.Contains(err.Error(), "SNSTopicARN is unset") {
+		t.Fatalf("empty args not refused together: %v", err)
 	}
 }
