@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## v0.15.0
+
+- `pkg/boundary`: `Spec.Validate` now checks the delegation graph as well as the required names. A delegate that is not an entry of `Hierarchy`, a leaf shape (`Names.Default`, `Names.Project`, `Names.Audit`) that delegates, and a cycle through the delegates are each reported. A hierarchy that listed a delegate without an entry of its own is now refused: add the entry.
+
 ## v0.14.0
 
 - `pkg/fleet`: the per-account loops of an organization's root stack over the
