@@ -214,3 +214,88 @@ func TestDeliveryPolicyWithinAWSLimits(t *testing.T) {
 		t.Fatal("delay targets outside 1-3600s")
 	}
 }
+
+// queueARN is built, not spelled: the repository holds no literal account id.
+func queueARN() string {
+	return "arn:part:sqs:region-c:" + strings.Repeat("3", 12) + ":alerts"
+}
+
+func TestSQSSubscriptionIsOptionalAndLeavesHTTPSAlone(t *testing.T) {
+	a := args()
+	a.Delivery.QueueARN = queueARN()
+
+	rec, _, err := run(t, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := strings.Join(rec.names(), ",")
+	for _, n := range []string{
+		"alert-ingress-sqs-subscription-region-a", "alert-ingress-sqs-subscription-region-b",
+		"alert-ingress-subscription-region-a", "alert-ingress-subscription-region-b",
+	} {
+		if !strings.Contains(got, n+",") && !strings.HasSuffix(got, n) {
+			t.Errorf("missing %s in %s", n, got)
+		}
+	}
+
+	for _, region := range []string{"region-a", "region-b"} {
+		sub := "alert-ingress-sqs-subscription-" + region
+
+		if v := rec.input(sub, "protocol").StringValue(); v != "sqs" {
+			t.Errorf("%s protocol = %q", sub, v)
+		}
+
+		if v := rec.input(sub, "endpoint").StringValue(); v != queueARN() {
+			t.Errorf("%s endpoint = %q", sub, v)
+		}
+
+		if v := rec.input(sub, "rawMessageDelivery"); !v.IsBool() || v.BoolValue() {
+			t.Errorf("%s raw message delivery must be off, got %v", sub, v)
+		}
+
+		if v := rec.input("alert-ingress-subscription-"+region, "protocol").StringValue(); v != "https" {
+			t.Errorf("the HTTPS subscription changed: %q", v)
+		}
+	}
+}
+
+func TestDisableHTTPSKeepsOnlyTheQueue(t *testing.T) {
+	a := args()
+	a.Endpoint = ""
+	a.Delivery = alerting.Delivery{QueueARN: queueARN(), DisableHTTPS: true}
+
+	rec, _, err := run(t, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, n := range rec.names() {
+		if strings.HasPrefix(n, "alert-ingress-subscription-") {
+			t.Errorf("HTTPS subscription %s still created", n)
+		}
+	}
+
+	if rec.input("alert-ingress-sqs-subscription-region-a", "protocol").StringValue() != "sqs" {
+		t.Error("the SQS subscription is missing")
+	}
+}
+
+func TestDeliveryRefusals(t *testing.T) {
+	for name, tc := range map[string]struct {
+		d    alerting.Delivery
+		frag string
+	}{
+		"not an ARN":         {alerting.Delivery{QueueARN: "nope"}, "not an SQS queue ARN"},
+		"a topic ARN":        {alerting.Delivery{QueueARN: "arn:part:sns:region-c:" + strings.Repeat("3", 12) + ":t"}, "not an SQS queue ARN"},
+		"wrong partition":    {alerting.Delivery{QueueARN: "arn:other:sqs:region-c:" + strings.Repeat("3", 12) + ":q"}, "not in partition"},
+		"https off no queue": {alerting.Delivery{DisableHTTPS: true}, "DisableHTTPS needs QueueARN"},
+	} {
+		a := args()
+		a.Delivery = tc.d
+
+		if err := a.Validate(); err == nil || !strings.Contains(err.Error(), tc.frag) {
+			t.Errorf("%s: err = %v, want %q", name, err, tc.frag)
+		}
+	}
+}

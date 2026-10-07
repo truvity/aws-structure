@@ -57,9 +57,12 @@ type Args struct {
 	// TopicName is the physical name of every topic. Required.
 	TopicName string
 	// Endpoint is the receiver's HTTPS URL every topic is subscribed to.
-	// Required. The receiver confirms the subscription itself, at creation, so
-	// it must already answer.
+	// Required unless Delivery.DisableHTTPS. The receiver confirms the
+	// subscription itself, at creation, so it must already answer.
 	Endpoint string
+	// Delivery adds an SQS subscription to every topic and can drop the HTTPS
+	// ones; the zero value leaves the render as it was.
+	Delivery Delivery
 	// Heartbeat and Chatbot configure the two optional-looking parts that the
 	// estate keeps: both are required.
 	Heartbeat Heartbeat
@@ -75,7 +78,7 @@ func (a *Args) Validate() error {
 
 	for name, v := range map[string]string{
 		"Partition": a.Partition, "Profile": a.Profile, "PrimaryRegion": a.PrimaryRegion, "OrgID": a.OrgID,
-		"TopicName": a.TopicName, "Endpoint": a.Endpoint, "BoundaryName": a.BoundaryName,
+		"TopicName": a.TopicName, "BoundaryName": a.BoundaryName,
 		"Heartbeat.RuleName": a.Heartbeat.RuleName, "Heartbeat.Input": a.Heartbeat.Input,
 		"Chatbot.ConfigurationName": a.Chatbot.ConfigurationName, "Chatbot.RoleName": a.Chatbot.RoleName,
 		"Chatbot.SlackTeamID": a.Chatbot.SlackTeamID, "Chatbot.SlackChannelID": a.Chatbot.SlackChannelID,
@@ -83,6 +86,14 @@ func (a *Args) Validate() error {
 		if v == "" {
 			errs = append(errs, fmt.Errorf("args: %s is empty", name))
 		}
+	}
+
+	if a.Endpoint == "" && !a.Delivery.DisableHTTPS {
+		errs = append(errs, errors.New("args: Endpoint is empty"))
+	}
+
+	if err := a.Delivery.Validate(a.Partition); err != nil {
+		errs = append(errs, err)
 	}
 
 	found := false
@@ -163,14 +174,21 @@ func Security(ctx *pulumi.Context, logger *slog.Logger, a Args) (map[string]pulu
 		// endpoint must already answer, else this stays PendingConfirmation.
 		// No endpointAutoConfirms: the receiver confirms allow-listed topics
 		// itself.
-		if _, err = sns.NewTopicSubscription(ctx, fmt.Sprintf("alert-ingress-subscription-%s", region), &sns.TopicSubscriptionArgs{
-			Topic:              topic.Arn,
-			Protocol:           pulumi.String("https"),
-			Endpoint:           pulumi.String(a.Endpoint),
-			RawMessageDelivery: pulumi.Bool(false),
-			DeliveryPolicy:     pulumi.String(DeliveryPolicy()),
-		}, pulumi.Provider(provider)); err != nil {
-			return nil, fmt.Errorf("create alert-ingress subscription in %s: %w", region, err)
+		if !a.Delivery.DisableHTTPS {
+			if _, err = sns.NewTopicSubscription(ctx, fmt.Sprintf("alert-ingress-subscription-%s", region), &sns.TopicSubscriptionArgs{
+				Topic:              topic.Arn,
+				Protocol:           pulumi.String("https"),
+				Endpoint:           pulumi.String(a.Endpoint),
+				RawMessageDelivery: pulumi.Bool(false),
+				DeliveryPolicy:     pulumi.String(DeliveryPolicy()),
+			}, pulumi.Provider(provider)); err != nil {
+				return nil, fmt.Errorf("create alert-ingress subscription in %s: %w", region, err)
+			}
+		}
+
+		if err = a.Delivery.SubscribeQueue(ctx, fmt.Sprintf("alert-ingress-sqs-subscription-%s", region), topic.Arn,
+			pulumi.Provider(provider)); err != nil {
+			return nil, err
 		}
 
 		if region == a.PrimaryRegion {
