@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.19.0
 
 - **`pkg/alerting`, `pkg/cost`: an optional SQS subscription on the alert topics.** New `alerting.Delivery{QueueARN, DisableHTTPS}`, a field `Delivery` of `alerting.Args` and `cost.Args`. With `QueueARN` set, every topic these packages own (each region's security topic, which also carries the heartbeat, and the Budgets and Cost Anomaly topics) gets one more `aws.sns.TopicSubscription`, protocol `sqs`, endpoint the queue, raw message delivery off (the receiver verifies the SNS envelope). It is created in the topic's account and region, so the queue may be in another account or region; the queue's policy must admit the topic. New logical names: `alert-ingress-sqs-subscription-<region>` and `cost-{budgets,anomalies}-alert-ingress-sqs`. Left unset, the render is byte-identical and the HTTPS subscriptions are untouched. `DisableHTTPS` (default off) drops the HTTPS subscriptions for the cutover's last step; it needs `QueueARN`, and `Endpoint` is then no longer required. `Args.Validate` refuses a queue ARN that is not an SQS ARN of the partition and `DisableHTTPS` without a queue. Additive.
 
