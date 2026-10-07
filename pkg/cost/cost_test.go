@@ -12,6 +12,8 @@ import (
 	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws/costexplorer"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/truvity/aws-structure/pkg/alerting"
 )
 
 type recorder struct {
@@ -255,5 +257,83 @@ func TestSpecValidate(t *testing.T) {
 
 	if NodePoolValue("ci") != "nodes-ci" {
 		t.Error("NodePoolValue")
+	}
+}
+
+func deployNames(t *testing.T, a Args) (map[string]string, error) {
+	t.Helper()
+
+	rec := &recorder{names: map[string]string{}}
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		return Deploy(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), a)
+	}, pulumi.WithMocks("proj", "stack", rec))
+
+	return rec.names, err
+}
+
+func TestSQSSubscriptionsOnBothTopics(t *testing.T) {
+	a := args()
+	a.Delivery.QueueARN = "arn:part:sqs:region-c:" + strings.Repeat("3", 12) + ":alerts"
+
+	names, err := deployNames(t, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base, err := deployNames(t, args())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for n := range base {
+		if _, ok := names[n]; !ok {
+			t.Errorf("%s disappeared", n)
+		}
+	}
+
+	extra := 0
+
+	for n, typ := range names {
+		if _, ok := base[n]; !ok {
+			extra++
+
+			if typ != "aws:sns/topicSubscription:TopicSubscription" || !strings.HasSuffix(n, "-alert-ingress-sqs") {
+				t.Errorf("unexpected new resource %s (%s)", n, typ)
+			}
+		}
+	}
+
+	if extra != 2 {
+		t.Errorf("new resources = %d, want one subscription per topic", extra)
+	}
+}
+
+func TestDisableHTTPSDropsOnlyTheHTTPSSubscriptions(t *testing.T) {
+	a := args()
+	a.Endpoint = ""
+	a.Delivery = alerting.Delivery{QueueARN: "arn:part:sqs:region-c:" + strings.Repeat("3", 12) + ":alerts", DisableHTTPS: true}
+
+	names, err := deployNames(t, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, n := range []string{"cost-budgets-alert-ingress", "cost-anomalies-alert-ingress"} {
+		if _, ok := names[n]; ok {
+			t.Errorf("%s still created", n)
+		}
+	}
+
+	for _, n := range []string{"cost-budgets-alert-ingress-sqs", "cost-anomalies-alert-ingress-sqs"} {
+		if _, ok := names[n]; !ok {
+			t.Errorf("%s missing", n)
+		}
+	}
+
+	b := args()
+	b.Delivery.DisableHTTPS = true
+
+	if err := b.Validate(); err == nil || !strings.Contains(err.Error(), "DisableHTTPS needs QueueARN") {
+		t.Errorf("DisableHTTPS without a queue must be refused: %v", err)
 	}
 }

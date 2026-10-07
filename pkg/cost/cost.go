@@ -103,8 +103,12 @@ type (
 		BudgetsTopic   string
 		AnomaliesTopic string
 		// Endpoint is the receiver's HTTPS URL. The receiver confirms a
-		// subscription of an allow-listed topic itself, at creation. Required.
+		// subscription of an allow-listed topic itself, at creation. Required
+		// unless Delivery.DisableHTTPS.
 		Endpoint string
+		// Delivery adds an SQS subscription to both topics and can drop the
+		// HTTPS ones; the zero value leaves the render as it was.
+		Delivery alerting.Delivery
 		Spec     Spec
 	}
 )
@@ -149,12 +153,20 @@ func (a *Args) Validate() error {
 
 	for name, v := range map[string]string{
 		"Partition": a.Partition, "Profile": a.Profile, "PayerAccountID": a.PayerAccountID, "Region": a.Region,
-		"BudgetsTopic": a.BudgetsTopic, "AnomaliesTopic": a.AnomaliesTopic, "Endpoint": a.Endpoint,
+		"BudgetsTopic": a.BudgetsTopic, "AnomaliesTopic": a.AnomaliesTopic,
 		"Spec.DefaultMonitor.ARN": a.Spec.DefaultMonitor.ARN, "Spec.DefaultMonitor.Name": a.Spec.DefaultMonitor.Name,
 	} {
 		if v == "" {
 			errs = append(errs, fmt.Errorf("args: %s is empty", name))
 		}
+	}
+
+	if a.Endpoint == "" && !a.Delivery.DisableHTTPS {
+		errs = append(errs, errors.New("args: Endpoint is empty"))
+	}
+
+	if err := a.Delivery.Validate(a.Partition); err != nil {
+		errs = append(errs, err)
 	}
 
 	if err := a.Spec.Validate(a.Partition); err != nil {
@@ -243,14 +255,20 @@ func Deploy(ctx *pulumi.Context, logger *slog.Logger, a Args) error {
 		name  string
 		topic *sns.Topic
 	}{{"budgets", budgetsTopic}, {"anomalies", anomalyTopic}} {
-		if _, err := sns.NewTopicSubscription(ctx, "cost-"+s.name+"-alert-ingress", &sns.TopicSubscriptionArgs{
-			Topic:              s.topic.Arn,
-			Protocol:           pulumi.String("https"),
-			Endpoint:           pulumi.String(a.Endpoint),
-			RawMessageDelivery: pulumi.Bool(false),
-			DeliveryPolicy:     pulumi.String(alerting.DeliveryPolicy()),
-		}, opt); err != nil {
-			return fmt.Errorf("create %s subscription: %w", s.name, err)
+		if !a.Delivery.DisableHTTPS {
+			if _, err := sns.NewTopicSubscription(ctx, "cost-"+s.name+"-alert-ingress", &sns.TopicSubscriptionArgs{
+				Topic:              s.topic.Arn,
+				Protocol:           pulumi.String("https"),
+				Endpoint:           pulumi.String(a.Endpoint),
+				RawMessageDelivery: pulumi.Bool(false),
+				DeliveryPolicy:     pulumi.String(alerting.DeliveryPolicy()),
+			}, opt); err != nil {
+				return fmt.Errorf("create %s subscription: %w", s.name, err)
+			}
+		}
+
+		if err := a.Delivery.SubscribeQueue(ctx, "cost-"+s.name+"-alert-ingress-sqs", s.topic.Arn, opt); err != nil {
+			return err
 		}
 	}
 
