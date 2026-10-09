@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"strings"
 
 	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws"
 	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws/iam"
@@ -36,6 +37,23 @@ type Bucket struct {
 	DynamicName pulumi.StringInput
 	// KMSAlias is the alias of the key, with its "alias/" prefix. Required.
 	KMSAlias string
+	// ExistingKeyARN is the ARN of a key that already exists in the bucket's
+	// account and region (an EKS cluster's, say). Empty: NewBucket creates the
+	// bucket's own key, as it always did. Set: no key is created, KMSAlias
+	// points at this key, the bucket encrypts with it and the replication role
+	// may decrypt with it. The key's policy is the caller's; it must let the
+	// bucket's writers, the replication role and the readers use the key
+	// through S3. The replica bucket keeps its own key in ReplicaRegion.
+	ExistingKeyARN string
+	// LegacyKeyAlias is used with ExistingKeyARN. It keeps the key the bucket
+	// had (logical names unchanged: "<prefix>/kms-key") instead of letting
+	// Pulumi delete it, marks it retain-on-delete and gives it this alias
+	// (with its "alias/" prefix), so objects and data keys still encrypted
+	// under it stay readable by anything that names a key by alias. Empty with
+	// ExistingKeyARN: the old key leaves the program, and, being retained, is
+	// not deleted by Pulumi; schedule its deletion yourself. A permission
+	// boundary that denies kms:ScheduleKeyDeletion would fail a Pulumi delete.
+	LegacyKeyAlias string
 	// Region is the bucket's region. Required.
 	Region string
 	// ReplicaRegion is the region of the replica. Required by NewReplication.
@@ -49,7 +67,12 @@ type Bucket struct {
 // Result holds what NewBucket created, for NewReplication.
 type Result struct {
 	Bucket *s3.Bucket
+	// KMSKey is the key this library declares: the bucket's own key, or, with
+	// Bucket.ExistingKeyARN and Bucket.LegacyKeyAlias, the retained old key.
+	// Nil with ExistingKeyARN and no LegacyKeyAlias.
 	KMSKey *kms.Key
+	// KMSKeyArn is the ARN of the key the bucket encrypts with.
+	KMSKeyArn pulumi.StringOutput
 }
 
 // BucketName returns the name a state bucket of accountID in region has:
@@ -94,7 +117,45 @@ func (b Bucket) Validate() error {
 		}
 	}
 
+	errs = append(errs, b.validateKey()...)
+
 	return errors.Join(errs...)
+}
+
+var keyARNPattern = regexp.MustCompile(`^arn:([a-z-]+):kms:([a-z0-9-]+):(\d{12}):key/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$`)
+
+// validateKey checks ExistingKeyARN and LegacyKeyAlias.
+func (b Bucket) validateKey() []error {
+	var errs []error
+
+	if b.ExistingKeyARN == "" {
+		if b.LegacyKeyAlias != "" {
+			errs = append(errs, errors.New("LegacyKeyAlias needs ExistingKeyARN"))
+		}
+
+		return errs
+	}
+
+	m := keyARNPattern.FindStringSubmatch(b.ExistingKeyARN)
+	switch {
+	case m == nil:
+		errs = append(errs, fmt.Errorf("existing key ARN must be a single-region key ARN (key/<uuid>), got: %q", b.ExistingKeyARN))
+	case b.Region != "" && m[2] != b.Region:
+		errs = append(errs, fmt.Errorf("existing key is in %s, the bucket in %s", m[2], b.Region))
+	case b.DynamicName == nil && b.AccountID != "" && m[3] != b.AccountID:
+		errs = append(errs, fmt.Errorf("existing key is in account %s, the bucket in %s", m[3], b.AccountID))
+	}
+
+	if b.LegacyKeyAlias != "" {
+		switch {
+		case !strings.HasPrefix(b.LegacyKeyAlias, "alias/") || strings.HasPrefix(b.LegacyKeyAlias, "alias/aws/"):
+			errs = append(errs, fmt.Errorf("legacy key alias must start with alias/ and not alias/aws/, got: %q", b.LegacyKeyAlias))
+		case b.LegacyKeyAlias == b.KMSAlias:
+			errs = append(errs, errors.New("legacy key alias must differ from KMSAlias"))
+		}
+	}
+
+	return errs
 }
 
 // ValidateSet refuses a set of buckets that repeat an account or a bucket name,
@@ -160,6 +221,67 @@ func newKMSKeyWithAlias(
 	return kmsKey, nil
 }
 
+// stateKeyDescription is the description of a state bucket's own key.
+func stateKeyDescription(account string) pulumi.StringInput {
+	return pulumi.Sprintf("KMS key for Pulumi state bucket (%s)", account)
+}
+
+// newStateKey returns the key the bucket encrypts with, as an ARN, and the key
+// this library declares for it (see Result.KMSKey).
+//
+// Without Bucket.ExistingKeyARN it creates the key and its alias. With it,
+// there is no new key: the alias {prefix}/kms-alias points at the existing
+// key, and the key the bucket had is kept under Bucket.LegacyKeyAlias, or left
+// to go. The logical names are those of the first case, so the alias moves
+// rather than being replaced.
+func newStateKey(
+	c *pulumi.Context,
+	prefix string,
+	b Bucket,
+	provider *aws.Provider,
+) (*kms.Key, pulumi.StringOutput, error) {
+	if b.ExistingKeyARN == "" {
+		key, err := newKMSKeyWithAlias(c, prefix, stateKeyDescription(b.Account), b.KMSAlias, provider)
+		if err != nil {
+			return nil, pulumi.StringOutput{}, err
+		}
+
+		return key, key.Arn, nil
+	}
+
+	var legacy *kms.Key
+
+	if b.LegacyKeyAlias != "" {
+		key, err := kms.NewKey(c, prefix+"/kms-key", &kms.KeyArgs{
+			Description:       stateKeyDescription(b.Account),
+			EnableKeyRotation: pulumi.Bool(true),
+		}, pulumi.Provider(provider), pulumi.RetainOnDelete(true))
+		if err != nil {
+			return nil, pulumi.StringOutput{}, fmt.Errorf("keep legacy KMS key (%s): %w", prefix, err)
+		}
+
+		_, err = kms.NewAlias(c, prefix+"/kms-legacy-alias", &kms.AliasArgs{
+			Name:        pulumi.String(b.LegacyKeyAlias),
+			TargetKeyId: key.KeyId,
+		}, pulumi.Provider(provider))
+		if err != nil {
+			return nil, pulumi.StringOutput{}, fmt.Errorf("create legacy KMS alias (%s): %w", prefix, err)
+		}
+
+		legacy = key
+	}
+
+	_, err := kms.NewAlias(c, prefix+"/kms-alias", &kms.AliasArgs{
+		Name:        pulumi.String(b.KMSAlias),
+		TargetKeyId: pulumi.String(b.ExistingKeyARN),
+	}, pulumi.Provider(provider))
+	if err != nil {
+		return nil, pulumi.StringOutput{}, fmt.Errorf("create KMS alias (%s): %w", prefix, err)
+	}
+
+	return legacy, pulumi.String(b.ExistingKeyARN).ToStringOutput(), nil
+}
+
 // applyBucketBaseline enables versioning, configures SSE-KMS encryption with
 // bucket key, blocks all public access and refuses non-TLS requests.
 // Resource names: {prefix}/bucket-versioning, /bucket-encryption, /bucket-pab,
@@ -169,7 +291,7 @@ func applyBucketBaseline(
 	c *pulumi.Context,
 	prefix string,
 	bucket *s3.Bucket,
-	kmsKey *kms.Key,
+	keyARN pulumi.StringInput,
 	provider *aws.Provider,
 ) (*s3.BucketVersioning, error) {
 	versioning, err := s3.NewBucketVersioning(c, prefix+"/bucket-versioning", &s3.BucketVersioningArgs{
@@ -190,7 +312,7 @@ func applyBucketBaseline(
 				&s3.BucketServerSideEncryptionConfigurationV2RuleArgs{
 					ApplyServerSideEncryptionByDefault: &s3.BucketServerSideEncryptionConfigurationV2RuleApplyServerSideEncryptionByDefaultArgs{
 						SseAlgorithm:   pulumi.String("aws:kms"),
-						KmsMasterKeyId: kmsKey.Arn,
+						KmsMasterKeyId: keyARN,
 					},
 					BucketKeyEnabled: pulumi.Bool(true),
 				},
@@ -280,12 +402,7 @@ func NewBucket(c *pulumi.Context, logger *slog.Logger, b Bucket, provider *aws.P
 		slog.String("account_id", b.AccountID),
 	)
 
-	kmsKey, err := newKMSKeyWithAlias(
-		c, prefix,
-		pulumi.Sprintf("KMS key for Pulumi state bucket (%s)", b.Account),
-		b.KMSAlias,
-		provider,
-	)
+	kmsKey, keyARN, err := newStateKey(c, prefix, b, provider)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +419,7 @@ func NewBucket(c *pulumi.Context, logger *slog.Logger, b Bucket, provider *aws.P
 		return nil, fmt.Errorf("create S3 bucket (%s): %w", b.Account, err)
 	}
 
-	if _, err := applyBucketBaseline(c, prefix, bucket, kmsKey, provider); err != nil {
+	if _, err := applyBucketBaseline(c, prefix, bucket, keyARN, provider); err != nil {
 		return nil, err
 	}
 
@@ -313,9 +430,9 @@ func NewBucket(c *pulumi.Context, logger *slog.Logger, b Bucket, provider *aws.P
 	c.Export(fmt.Sprintf("%s-backend-url", b.Account),
 		pulumi.Sprintf("s3://%s?awssdk=v2&region=%s", bucket.Bucket, b.Region))
 	c.Export(fmt.Sprintf("%s-bucket-name", b.Account), bucket.Bucket)
-	c.Export(fmt.Sprintf("%s-kms-key-arn", b.Account), kmsKey.Arn)
+	c.Export(fmt.Sprintf("%s-kms-key-arn", b.Account), keyARN)
 
-	return &Result{Bucket: bucket, KMSKey: kmsKey}, nil
+	return &Result{Bucket: bucket, KMSKey: kmsKey, KMSKeyArn: keyARN}, nil
 }
 
 // Replication configures NewReplication.
@@ -439,7 +556,7 @@ func newReplicaBucket(c *pulumi.Context, prefix string, b Bucket, replicaProvide
 		return nil, fmt.Errorf("create replica bucket (%s): %w", b.Account, err)
 	}
 
-	versioning, err := applyBucketBaseline(c, prefix, bucket, key, replicaProvider)
+	versioning, err := applyBucketBaseline(c, prefix, bucket, key.Arn, replicaProvider)
 	if err != nil {
 		return nil, err
 	}
@@ -487,12 +604,19 @@ func newReplicationResources(
 	_, err = iam.NewRolePolicy(c, prefix+"/replication-policy", &iam.RolePolicyArgs{
 		Name: pulumi.Sprintf("pulumi-state-replication-%s-policy", account),
 		Role: role.Name,
-		Policy: pulumi.All(src.Bucket.Arn, replica.bucket.Arn, src.KMSKey.Arn, replica.kmsKey.Arn).
+		Policy: pulumi.All(src.Bucket.Arn, replica.bucket.Arn, src.KMSKeyArn, replica.kmsKey.Arn, srcOldKeyARN(src)).
 			ApplyT(func(args []any) string {
 				srcBucketARN := args[0].(string)
 				dstBucketARN := args[1].(string)
 				srcKMSARN := args[2].(string)
 				dstKMSARN := args[3].(string)
+				srcDecrypt := fmt.Sprintf("%q", srcKMSARN)
+
+				// A retained old key: its objects may still be replicated or
+				// retried, so the role may decrypt with it too.
+				if old := args[4].(string); old != "" && old != srcKMSARN {
+					srcDecrypt = fmt.Sprintf("[%q, %q]", srcKMSARN, old)
+				}
 
 				return fmt.Sprintf(`{
   "Version": "2012-10-17",
@@ -526,7 +650,7 @@ func newReplicationResources(
     {
       "Effect": "Allow",
       "Action": ["kms:Decrypt"],
-      "Resource": %q
+      "Resource": %s
     },
     {
       "Effect": "Allow",
@@ -534,7 +658,7 @@ func newReplicationResources(
       "Resource": %q
     }
   ]
-}`, srcBucketARN, srcBucketARN, dstBucketARN, srcKMSARN, dstKMSARN)
+}`, srcBucketARN, srcBucketARN, dstBucketARN, srcDecrypt, dstKMSARN)
 			}).(pulumi.StringOutput),
 	}, pulumi.Provider(provider))
 	if err != nil {
@@ -568,4 +692,14 @@ func newReplicationResources(
 	}
 
 	return nil
+}
+
+// srcOldKeyARN is the ARN of the key the source bucket had besides the one it
+// encrypts with, or "".
+func srcOldKeyARN(src *Result) pulumi.StringInput {
+	if src.KMSKey == nil {
+		return pulumi.String("")
+	}
+
+	return src.KMSKey.Arn
 }
