@@ -5,6 +5,8 @@ them, and for anything breaking, what to do.
 
 ## Unreleased
 
+## v0.21.1
+
 - **Security: Go toolchain 1.27.2 and `golang.org/x/net` v0.60.0.** Clears the `govulncheck` findings in `golang.org/x/net` v0.58.0 and in the standard library of Go 1.27.1 (`net/http`, `net/http/internal/http2`, `crypto/tls`, `mime/multipart`, `os`). `go.mod` now says `toolchain go1.27.2`; `golang.org/x/sync`, `x/sys`, `x/term` and `x/text` moved up with `x/net`. `golangci-lint` moves to 2.14.0 in `devbox.json` so lint can read the Go 1.27.2 standard library. `devbox` has no `go` 1.27.2 yet, so the dev shell keeps `go@1.27.0` and fetches the toolchain from `go.mod`. No API change.
 
 ## v0.21.0
