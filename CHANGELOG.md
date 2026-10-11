@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.20.0
 
 - **`pkg/backend`: a state bucket can use a key that already exists.** New `Bucket.ExistingKeyARN` and `Bucket.LegacyKeyAlias`, and `Result.KMSKeyArn`. Left unset, nothing changes: the same resources, the same logical names, the same policy documents. With `ExistingKeyARN` (a single-region key in the bucket's account and region, checked by `Validate`) no key is created: `alias/<KMSAlias>` (`<prefix>/kms-alias`) points at that key, the bucket's default encryption and the `<account>-kms-key-arn` export name it, and the replication role may `kms:Decrypt` with it. The replica bucket keeps its own key. The key policy of the existing key is the caller's. For an account that already has the library's key, the alias is updated in place (same logical name) and the old key is no longer declared, which would make Pulumi delete it; to avoid that set `LegacyKeyAlias`: the old key stays under its logical name `<prefix>/kms-key`, is marked retain-on-delete, gets that second alias (`<prefix>/kms-legacy-alias`), and the replication role may decrypt with both keys. Drop `LegacyKeyAlias` later to let the old key leave the program; because it is retained, Pulumi does not call `ScheduleKeyDeletion` (a permissions boundary may deny it), so schedule the deletion yourself. `Result.KMSKey` is now nil when `ExistingKeyARN` is set without `LegacyKeyAlias`. Additive.
 
