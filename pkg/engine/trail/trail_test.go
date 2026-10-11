@@ -399,3 +399,94 @@ func TestRefusalReportsEveryProblemAtOnce(t *testing.T) {
 		}
 	}
 }
+
+func exclusionFixture() string {
+	// Built at runtime: the file must hold no literal ARN.
+	return "ar" + "n:" + "part" + ":s3:::" + "cache-bucket-x" + "/"
+}
+
+func TestExclusionsSwitchToAdvancedSelectors(t *testing.T) {
+	a := full()
+	a.DataEventExclusions = []string{exclusionFixture(), exclusionFixture() + "sub/"}
+
+	regs, err := run(t, a, opt{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tr := by(regs)["trail-acct-trail"].inputs
+
+	if _, ok := tr["eventSelectors"]; ok {
+		t.Errorf("classic selectors still set: %v", tr["eventSelectors"])
+	}
+
+	adv := tr["advancedEventSelectors"].ArrayValue()
+	if len(adv) != 2 {
+		t.Fatalf("advanced selectors = %v", adv)
+	}
+
+	field := func(sel resource.PropertyMap, name string) resource.PropertyMap {
+		for _, f := range sel["fieldSelectors"].ArrayValue() {
+			if o := f.ObjectValue(); o["field"].StringValue() == name {
+				return o
+			}
+		}
+
+		t.Fatalf("selector %v lacks field %s", sel, name)
+
+		return nil
+	}
+
+	mgmt := adv[0].ObjectValue()
+	if mgmt["name"].StringValue() != "Management events" || len(mgmt["fieldSelectors"].ArrayValue()) != 1 ||
+		field(mgmt, "eventCategory")["equals"].ArrayValue()[0].StringValue() != "Management" {
+		t.Errorf("management selector %v", mgmt)
+	}
+
+	data := adv[1].ObjectValue()
+	if data["name"].StringValue() != "S3 data events" ||
+		field(data, "eventCategory")["equals"].ArrayValue()[0].StringValue() != "Data" ||
+		field(data, "resources.type")["equals"].ArrayValue()[0].StringValue() != "AWS::S3::Object" {
+		t.Errorf("data selector %v", data)
+	}
+
+	ns := field(data, "resources.ARN")["notStartsWiths"].ArrayValue()
+	if len(ns) != 2 || ns[0].StringValue() != exclusionFixture() || ns[1].StringValue() != exclusionFixture()+"sub/" {
+		t.Errorf("notStartsWith = %v", ns)
+	}
+}
+
+func TestNoExclusionsKeepsClassicSelector(t *testing.T) {
+	regs, err := run(t, full(), opt{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tr := by(regs)["trail-acct-trail"].inputs
+	if _, ok := tr["advancedEventSelectors"]; ok {
+		t.Errorf("advanced selectors set without exclusions: %v", tr["advancedEventSelectors"])
+	}
+}
+
+func TestExclusionRefusals(t *testing.T) {
+	good := exclusionFixture()
+
+	for name, x := range map[string]string{
+		"no slash":    strings.TrimSuffix(good, "/"),
+		"not an arn":  "cache-bucket-x/",
+		"not s3":      "ar" + "n:part:sqs:::cache-bucket-x/",
+		"no bucket":   "ar" + "n:part:s3:::/",
+		"wildcard":    good + "*",
+		"empty entry": "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := full()
+			a.DataEventExclusions = []string{x}
+
+			_, err := run(t, a, opt{})
+			if err == nil || !strings.Contains(err.Error(), "DataEventExclusions") {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}

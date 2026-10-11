@@ -76,6 +76,11 @@ type TrailArgs struct {
 	// DataEventResource is the S3 ARN whose object events the trail logs.
 	// Required.
 	DataEventResource string
+	// DataEventExclusions maps an account name to the S3 object ARN prefixes
+	// ("<bucket ARN>/") whose object events that account's trail does not
+	// log. Optional; an account without an entry keeps the classic selector,
+	// unchanged. See trail.Args.DataEventExclusions.
+	DataEventExclusions map[string][]string
 	// ReplicationRoleName is a format of (account name). Required.
 	ReplicationRoleName string
 }
@@ -116,10 +121,11 @@ func (f *Fleet) Trail(ctx *pulumi.Context, logger *slog.Logger, a TrailArgs) err
 				AccessLog: pulumi.Sprintf(a.AccessLogBucket, id, region),
 				Replica:   pulumi.Sprintf(a.ReplicaBucket, id, region),
 			},
-			KeyAlias:          a.KeyAlias,
-			KeyAdministrator:  pulumi.Sprintf("arn:%s:iam::%s:root", f.Partition, id),
-			TrailARN:          pulumi.Sprintf("arn:%s:cloudtrail:%s:%s:trail/*", f.Partition, region, id),
-			DataEventResource: a.DataEventResource,
+			KeyAlias:            a.KeyAlias,
+			KeyAdministrator:    pulumi.Sprintf("arn:%s:iam::%s:root", f.Partition, id),
+			TrailARN:            pulumi.Sprintf("arn:%s:cloudtrail:%s:%s:trail/*", f.Partition, region, id),
+			DataEventResource:   a.DataEventResource,
+			DataEventExclusions: a.DataEventExclusions[account],
 			ReplicationRole: awstrail.ReplicationRole{
 				Name:                fmt.Sprintf(a.ReplicationRoleName, account),
 				PermissionsBoundary: f.BoundaryARN(id),
