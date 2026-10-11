@@ -370,3 +370,60 @@ func TestImportedRefusals(t *testing.T) {
 		t.Fatalf("empty args not refused together: %v", err)
 	}
 }
+
+func TestDisabledFeatures(t *testing.T) {
+	regs, err := run(t, full(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, r := range children(regs) {
+		if strings.Contains(r.typ, "detectorFeature") {
+			t.Fatalf("feature registered without DisabledFeatures: %v", r)
+		}
+	}
+
+	if n := len(children(regs)); n != 5 {
+		t.Fatalf("children = %d, want 5", n)
+	}
+
+	a := full()
+	a.DisabledFeatures = []string{"S3_DATA_EVENTS"}
+
+	regs, err = run(t, a, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	m := by(regs)
+	if len(m) != 6 {
+		t.Fatalf("children = %d, want 6", len(m))
+	}
+
+	f, ok := m["gd-acct-region-a-feature-s3-data-events"]
+	if !ok {
+		t.Fatalf("feature missing: %v", m)
+	}
+
+	if f.typ != "aws:guardduty/detectorFeature:DetectorFeature" || f.parent == "" || f.provider != m["gd-acct-region-a-detector"].provider ||
+		f.noParentAlias != m["gd-acct-region-a-detector"].noParentAlias {
+		t.Errorf("feature registration %+v vs detector %+v", f, m["gd-acct-region-a-detector"])
+	}
+}
+
+func TestDisabledFeaturesRefusals(t *testing.T) {
+	for name, fs := range map[string][]string{
+		"unknown":   {"S3_DATA_EVENT"},
+		"lowercase": {"s3_data_events"},
+		"twice":     {"S3_DATA_EVENTS", "S3_DATA_EVENTS"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			a := full()
+			a.DisabledFeatures = fs
+
+			if _, err := run(t, a, false); err == nil || !strings.Contains(err.Error(), "DisabledFeatures") {
+				t.Fatalf("err = %v", err)
+			}
+		})
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws/cloudwatch"
 	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws/guardduty"
@@ -87,6 +88,15 @@ type Args struct {
 	// whatever this is.
 	FindingPublishingFrequency string
 
+	// DisabledFeatures are detector features to set DISABLED, by name, for
+	// example "S3_DATA_EVENTS". Optional. Empty: no feature resource is
+	// created and the detector keeps AWS's defaults, so an existing caller is
+	// unchanged. Each name creates one aws.guardduty.DetectorFeature, named
+	// "<component>-feature-<name, lower case, dashes>", parented like the
+	// detector. A feature the detector never had enabled is still declared
+	// DISABLED.
+	DisabledFeatures []string
+
 	// Names overrides the logical names of the children. Nil uses
 	// DefaultName.
 	Names NameFunc
@@ -134,9 +144,29 @@ func (a *Args) Validate() error {
 			a.FindingPublishingFrequency))
 	}
 
+	seenFeature := map[string]bool{}
+
+	for _, f := range a.DisabledFeatures {
+		switch {
+		case !knownFeatures[f]:
+			errs = append(errs, fmt.Errorf("args: DisabledFeatures entry %q is not a GuardDuty detector feature", f))
+		case seenFeature[f]:
+			errs = append(errs, fmt.Errorf("args: DisabledFeatures lists %q twice", f))
+		}
+
+		seenFeature[f] = true
+	}
+
 	errs = append(errs, a.checkNames("")...)
 
 	return errors.Join(errs...)
+}
+
+// knownFeatures are the detector feature names GuardDuty accepts.
+var knownFeatures = map[string]bool{
+	"S3_DATA_EVENTS": true, "EKS_AUDIT_LOGS": true, "EBS_MALWARE_PROTECTION": true,
+	"RDS_LOGIN_EVENTS": true, "EKS_RUNTIME_MONITORING": true, "LAMBDA_NETWORK_LOGS": true,
+	"RUNTIME_MONITORING": true, "AI_PROTECTION": true, "AI_ANALYST": true,
 }
 
 // checkNames refuses a naming hook that returns an empty or repeated name.
@@ -215,8 +245,21 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 		detector.FindingPublishingFrequency = pulumi.String(args.FindingPublishingFrequency)
 	}
 
-	if _, err := guardduty.NewDetector(ctx, child(KindDetector), detector, opt()...); err != nil {
+	det, err := guardduty.NewDetector(ctx, child(KindDetector), detector, opt()...)
+	if err != nil {
 		return nil, fmt.Errorf("create detector in %s/%s: %w", args.Account, args.Region, err)
+	}
+
+	for _, f := range args.DisabledFeatures {
+		fname := name + "-feature-" + strings.ReplaceAll(strings.ToLower(f), "_", "-")
+
+		if _, err := guardduty.NewDetectorFeature(ctx, fname, &guardduty.DetectorFeatureArgs{
+			DetectorId: det.ID(),
+			Name:       pulumi.String(f),
+			Status:     pulumi.String("DISABLED"),
+		}, opt()...); err != nil {
+			return nil, fmt.Errorf("disable feature %s in %s/%s: %w", f, args.Account, args.Region, err)
+		}
 	}
 
 	assume, err := assumeRolePolicy()
