@@ -151,6 +151,10 @@ type GuardDutyArgs struct {
 	// FindingPublishingFrequency is how often updates of a finding are
 	// published (see guardduty.Args). Empty: the provider default.
 	FindingPublishingFrequency string
+	// DisabledFeatures maps an account name to the detector features set
+	// DISABLED in every region of that account (see guardduty.Args). Optional;
+	// an account without an entry gets no feature resource.
+	DisabledFeatures map[string][]string
 }
 
 // GuardDuty deploys one AccountRegionGuardDuty per account and region named
@@ -178,6 +182,7 @@ func (f *Fleet) GuardDuty(ctx *pulumi.Context, logger *slog.Logger, pm *Provider
 				Provider:                   provider,
 				LegacyTopLevel:             true,
 				FindingPublishingFrequency: a.FindingPublishingFrequency,
+				DisabledFeatures:           a.DisabledFeatures[account],
 			}); err != nil {
 				return fmt.Errorf("deploy GuardDuty to %s/%s: %w", account, region, err)
 			}

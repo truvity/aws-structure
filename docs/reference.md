@@ -244,6 +244,7 @@ created with Provider):
 | Role policy | `aws:iam/rolePolicy:RolePolicy` | `<c>-eventbridge-policy` | `sns-publish`: `sns:Publish` on `SNSTopicARN` |
 | Rule | `aws:cloudwatch/eventRule:EventRule` | `<c>-rule` | named `guardduty-findings-<region>`; matches `aws.guardduty` / `GuardDuty Finding` |
 | Target | `aws:cloudwatch/eventTarget:EventTarget` | `<c>-target` | target id `security-alerts-sns`; `SNSTopicARN` with the role |
+| Detector features | `aws:guardduty/detectorFeature:DetectorFeature` | `<c>-feature-<name>` (lower case, `_` as `-`; not run through `Names`) | only for each entry of `DisabledFeatures` (such as `S3_DATA_EVENTS`): status `DISABLED`; none are created when it is empty; `New` only, not `NewImported` |
 
 `Names` receives a `Child{Component, Kind, Account, Region}`. The names it
 returns are part of the URNs and must be unique. With `LegacyTopLevel` every

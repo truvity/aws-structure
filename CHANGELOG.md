@@ -6,6 +6,7 @@ them, and for anything breaking, what to do.
 ## Unreleased
 
 - **`pkg/engine/trail`, `pkg/fleet`: leave chosen S3 prefixes out of the trail's data events.** New `trail.Args.DataEventExclusions` (S3 object ARN prefixes, each `<bucket ARN>/` with an optional key prefix) and `fleet.TrailArgs.DataEventExclusions` (a map from account name to such a list). Left empty, nothing changes: the trail keeps its classic event selector and the render is byte-identical. With entries, that account's trail switches to advanced event selectors: "Management events" (`eventCategory` Equals `Management`, the same as the classic management events, read and write) and "S3 data events" (`eventCategory` Equals `Data`, `resources.type` Equals `AWS::S3::Object`, `resources.ARN` NotStartsWith the exclusions). The trail is updated in place. `Args.Validate` refuses an entry that is not an S3 object ARN prefix. Additive.
+- **`pkg/engine/guardduty`, `pkg/fleet`: switch chosen detector features off.** New `guardduty.Args.DisabledFeatures` (names such as `S3_DATA_EVENTS`, checked against GuardDuty's list) and `fleet.GuardDutyArgs.DisabledFeatures` (a map from account name to such a list). Left empty, nothing changes: no new resource. With entries, one `aws.guardduty.DetectorFeature` per name (status `DISABLED`, logical name `<component>-feature-<name in lower case, dashes>`) is created next to the detector, with the detector's parent, provider and legacy alias. The detector's deprecated `datasources` block is not used. Additive.
 
 ## v0.20.0
 
