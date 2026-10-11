@@ -143,6 +143,7 @@ c, err := trail.New(ctx, "trail-"+account, &trail.Args{
 	KeyAdministrator:  rootARN,     // may manage the key (kms:*)
 	TrailARN:          trailARNs,   // trails that may use the key; wildcards allowed
 	DataEventResource: s3ARN,       // S3 data events the trail logs
+	// DataEventExclusions: []string{bucketARN + "/"}, // optional, see below
 	ReplicationRole: trail.ReplicationRole{
 		Name:                "replication",
 		PermissionsBoundary: boundaryARN,
@@ -192,10 +193,18 @@ part of the URNs and must be unique. With `LegacyTopLevel` every child carries
 one alias with `noParent`, the same type and the name `Names` gives it, so
 adopting existing resources is not a replace.
 
+`DataEventExclusions` (optional) lists S3 object ARN prefixes (`<bucket ARN>/`
+plus an optional key prefix) whose object events the trail does not log, for a
+bucket that is read at a volume that makes the events cost more than they are
+worth. Empty, the trail keeps its classic event selector. Set, the trail uses
+advanced event selectors: management events (all) and S3 object events with
+`resources.ARN` NotStartsWith the exclusions. `fleet.TrailArgs` takes the same
+as a map from account name to prefixes. The trail is updated in place.
+
 Refused before anything is registered, all reported at once: no `Account`,
 `Provider` or `ReplicaProvider`; a missing bucket name, key administrator,
 trail ARN, data-event resource, replication role name or permissions boundary;
-a key alias that is empty or lacks the `alias/` prefix; and a naming hook
+a `DataEventExclusions` entry that is not an S3 object ARN prefix; a key alias that is empty or lacks the `alias/` prefix; and a naming hook
 returning an empty or repeated name.
 
 ## `pkg/engine/guardduty`

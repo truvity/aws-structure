@@ -193,6 +193,15 @@ type Args struct {
 	// the S3 ARN whose object events are logged. The ARN of every S3 object
 	// logs them all.
 	DataEventResource string
+	// DataEventExclusions are S3 object ARN prefixes whose object events the
+	// trail does not log, for example a build cache read millions of times a
+	// day. Each is "<S3 ARN of the bucket>/" with an optional key prefix after
+	// the slash. Optional. Empty: the trail keeps its classic event selector,
+	// unchanged. Set: the trail uses advanced event selectors, one for
+	// management events and one for S3 object events that skips these
+	// prefixes. Switching an existing trail between the two forms updates it
+	// in place.
+	DataEventExclusions []string
 	// ReplicationRole is the role replication runs as.
 	ReplicationRole ReplicationRole
 
@@ -266,6 +275,12 @@ func (a *Args) Validate() error {
 		errs = append(errs, errors.New("args: DataEventResource is empty"))
 	}
 
+	for _, x := range a.DataEventExclusions {
+		if err := checkExclusion(x); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
 	if a.ReplicationRole.Name == "" {
 		errs = append(errs, errors.New("args: ReplicationRole.Name is empty"))
 	}
@@ -277,6 +292,75 @@ func (a *Args) Validate() error {
 	errs = append(errs, a.checkNames("")...)
 
 	return errors.Join(errs...)
+}
+
+// checkExclusion refuses a DataEventExclusions entry that is not an S3 object
+// ARN prefix: "arn:<partition>:s3:::<bucket>/" and an optional key prefix.
+func checkExclusion(x string) error {
+	rest, ok := strings.CutPrefix(x, "arn:")
+	if ok {
+		_, rest, ok = strings.Cut(rest, ":s3:::")
+	}
+
+	bucket, _, hasSlash := strings.Cut(rest, "/")
+	if !ok || !hasSlash || bucket == "" || strings.ContainsAny(x, " *?") {
+		return fmt.Errorf("args: DataEventExclusions entry %q is not an S3 object ARN prefix (<bucket ARN>/[key prefix])", x)
+	}
+
+	return nil
+}
+
+// trailSelectors returns the trail's event selectors: the classic one when
+// nothing is excluded, otherwise the advanced pair.
+func trailSelectors(args *Args) (cloudtrail.TrailEventSelectorArrayInput, cloudtrail.TrailAdvancedEventSelectorArrayInput) {
+	if len(args.DataEventExclusions) == 0 {
+		return cloudtrail.TrailEventSelectorArray{
+			&cloudtrail.TrailEventSelectorArgs{
+				ReadWriteType:           pulumi.String("All"),
+				IncludeManagementEvents: pulumi.Bool(true),
+				DataResources: cloudtrail.TrailEventSelectorDataResourceArray{
+					&cloudtrail.TrailEventSelectorDataResourceArgs{
+						Type:   pulumi.String("AWS::S3::Object"),
+						Values: pulumi.StringArray{pulumi.String(args.DataEventResource)},
+					},
+				},
+			},
+		}, nil
+	}
+
+	excluded := make(pulumi.StringArray, 0, len(args.DataEventExclusions))
+	for _, x := range args.DataEventExclusions {
+		excluded = append(excluded, pulumi.String(x))
+	}
+
+	return nil, cloudtrail.TrailAdvancedEventSelectorArray{
+		&cloudtrail.TrailAdvancedEventSelectorArgs{
+			Name: pulumi.String("Management events"),
+			FieldSelectors: cloudtrail.TrailAdvancedEventSelectorFieldSelectorArray{
+				&cloudtrail.TrailAdvancedEventSelectorFieldSelectorArgs{
+					Field:  pulumi.String("eventCategory"),
+					Equals: pulumi.StringArray{pulumi.String("Management")},
+				},
+			},
+		},
+		&cloudtrail.TrailAdvancedEventSelectorArgs{
+			Name: pulumi.String("S3 data events"),
+			FieldSelectors: cloudtrail.TrailAdvancedEventSelectorFieldSelectorArray{
+				&cloudtrail.TrailAdvancedEventSelectorFieldSelectorArgs{
+					Field:  pulumi.String("eventCategory"),
+					Equals: pulumi.StringArray{pulumi.String("Data")},
+				},
+				&cloudtrail.TrailAdvancedEventSelectorFieldSelectorArgs{
+					Field:  pulumi.String("resources.type"),
+					Equals: pulumi.StringArray{pulumi.String("AWS::S3::Object")},
+				},
+				&cloudtrail.TrailAdvancedEventSelectorFieldSelectorArgs{
+					Field:          pulumi.String("resources.ARN"),
+					NotStartsWiths: excluded,
+				},
+			},
+		},
+	}
 }
 
 // checkNames refuses a naming hook that returns an empty or repeated name.
@@ -379,6 +463,8 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 		return nil, err
 	}
 
+	classic, advanced := trailSelectors(args)
+
 	if _, err := cloudtrail.NewTrail(ctx, b.child(KindTrail), &cloudtrail.TrailArgs{
 		S3BucketName:               bucket.ID(),
 		KmsKeyId:                   key.Arn,
@@ -386,18 +472,8 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 		EnableLogFileValidation:    pulumi.Bool(true),
 		IncludeGlobalServiceEvents: pulumi.Bool(true),
 		IsOrganizationTrail:        pulumi.Bool(false),
-		EventSelectors: cloudtrail.TrailEventSelectorArray{
-			&cloudtrail.TrailEventSelectorArgs{
-				ReadWriteType:           pulumi.String("All"),
-				IncludeManagementEvents: pulumi.Bool(true),
-				DataResources: cloudtrail.TrailEventSelectorDataResourceArray{
-					&cloudtrail.TrailEventSelectorDataResourceArgs{
-						Type:   pulumi.String("AWS::S3::Object"),
-						Values: pulumi.StringArray{pulumi.String(args.DataEventResource)},
-					},
-				},
-			},
-		},
+		EventSelectors:             classic,
+		AdvancedEventSelectors:     advanced,
 	}, b.opts(args.Provider, pulumi.DependsOn([]pulumi.Resource{bucket, policy}))...); err != nil {
 		return nil, fmt.Errorf("create trail in %s: %w", args.Account, err)
 	}
