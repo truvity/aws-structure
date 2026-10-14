@@ -74,9 +74,11 @@ because an estate may deploy the two from different stacks, where one
 component cannot span both.
 
 ```go
+policy := registry.ISO27001PasswordPolicy() // or your own registry.PasswordPolicy
+
 c, err := iam.New(ctx, "iam-"+account, &iam.Args{
 	Account:        account,
-	PasswordPolicy: &registry.PasswordPolicy{MinimumLength: 14, MaxAgeDays: 90, ReusePrevention: 24 /* ... */},
+	PasswordPolicy: &policy,
 	Boundaries:     []registry.Boundary{{Name: "boundary-a", Document: docA}},
 	AuditorRole: &iam.AuditorRole{
 		Name:                "auditor",
@@ -94,7 +96,9 @@ c, err := iam.New(ctx, "iam-"+account, &iam.Args{
 ```
 
 The component carries no policy document, ARN or account id of its own: every
-one is a caller input. Each of `PasswordPolicy`, `Boundaries` and
+one is a caller input. `registry.ISO27001PasswordPolicy()` is a preset of the
+policy an ISO 27001 audit expects (length 14, 90 days, 24 remembered, every
+character class). Each of `PasswordPolicy`, `Boundaries` and
 `AuditorRole` is optional.
 
 Children (all registered under the component, none protected):
