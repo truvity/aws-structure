@@ -93,12 +93,11 @@ write_files:
           --lifecycle-action-result CONTINUE --instance-id "$(imds instance-id)" 2>&1)"; then
           exit 0
         fi
-        case "$out" in
-          *"No active Lifecycle Action"*) exit 0 ;;
-        esac
+        echo "bootstrap: CONTINUE attempt $i: $out" >&2
         sleep $((i * 3))
       done
-      bs_abort "cannot complete the lifecycle action"
+      echo "bootstrap: no CONTINUE sent; if an action was pending, the hook's DefaultResult applies" >&2
+      exit 0
   - path: /usr/local/lib/bootstrap/secrets.sh
     owner: root:root
     permissions: "0755"
