@@ -1,0 +1,33 @@
+#cloud-config
+write_files:
+  - path: /etc/systemd/system/conn.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Service]
+      ExecStart=/usr/local/bin/conn
+runcmd:
+  - set -e
+  - - bash
+    - -ec
+    - |
+      # conn install
+      install_it() { true; }
+      install_it
+  - - bash
+    - -ec
+    - |
+      # conn load token
+      umask 077
+      true
+  - - bash
+    - -ec
+    - |
+      # systemd daemon-reload
+      systemctl daemon-reload
+  - - bash
+    - -ec
+    - |
+      # conn start
+      systemctl daemon-reload
+      systemctl start conn

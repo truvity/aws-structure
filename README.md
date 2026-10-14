@@ -94,6 +94,7 @@ None recorded at v0. A repository that adopts it adds a line here.
 - [docs/reference.md](docs/reference.md) — the registry, field by field,
   and every refusal.
 - [docs/safety.md](docs/safety.md) — what is refused and why.
+- [docs/decisions/0003-bootstrap.md](docs/decisions/0003-bootstrap.md) — the cloud-init user-data composer (`pkg/bootstrap`).
 - [docs/doctrine.md](docs/doctrine.md) — why it is shaped this way.
 - [docs/decisions/](docs/decisions/) — the decisions, one page each.
 - [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
