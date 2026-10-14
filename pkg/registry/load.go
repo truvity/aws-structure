@@ -56,6 +56,9 @@ func (r *Registry) applyDefaults() {
 			r.IdentityCenter.Groups[i].Source = "manual"
 		}
 	}
+	if bg := r.IdentityCenter.BreakGlass; bg != nil && bg.PrincipalType == "" {
+		bg.PrincipalType = "group"
+	}
 	for i := range r.IdentityCenter.Assignments {
 		if r.IdentityCenter.Assignments[i].PrincipalType == "" {
 			r.IdentityCenter.Assignments[i].PrincipalType = "group"

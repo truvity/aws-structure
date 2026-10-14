@@ -20,13 +20,51 @@ error. Types are in `pkg/registry/types.go`; refusals in
 | `accounts[]` | `name`, `id` (12 digits, once it exists), `email`, `ou` (required), `scps[]`, `tags`, `baseline_exempt` (a reason) |
 | `scp_enforcement` | `dormant` (default); `enforced` is refused in v1 |
 | `scps[]` | `name`, `description`, `document` (JSON, at most 5120 bytes) |
-| `identity_center` | `instance_arn`, `identity_store_id`, `groups[]`, `permission_sets[]`, `assignments[]` |
+| `identity_center` | `instance_arn`, `identity_store_id`, `groups[]`, `permission_sets[]`, `assignments[]`, `break_glass` |
 | `identity_center.groups[]` | `name`, `source` (`manual` default, or `sync` for an externally filled group) |
 | `identity_center.permission_sets[]` | `name`, `description`, `session_duration` (`PT8H`), `managed_policies[]`, `inline_policy` (JSON, at most 10240 bytes), `includes[]` (no cycles) |
 | `identity_center.assignments[]` | `principal`, `principal_type` (`group` default, or `user`), `permission_set`, `accounts[]` and/or `ous[]` (at least one) |
+| `identity_center.break_glass` | `principal`, `principal_type` (`group` default, or `user`), `permission_set`: the way back into every account. Both must be declared. The preflight refuses a registry without it, or with an account no assignment of it reaches |
+| `waivers[]` | `guard` (`scp-on-management`), `target` (an OU or account name, or `root`), `reason` and `exit_condition` (both required), `expires` (`YYYY-MM-DD`, optional; the last day it counts). One waiver per guard and target |
 | `baseline` | `password_policy`, `ebs_default_encryption` (needs `regions`), `regions[]`, `access_analyzer`, `auditor_role` (`name`, `trusted_account`), `boundaries[]` (`name`, `document`) |
 
 See [safety.md](safety.md) for what each refusal protects against.
+
+## `pkg/preflight`
+
+The guard to run before an apply. Pure functions over the registry and the
+steps of a `pulumi preview`; `Run` wires them to an automation-API stack.
+
+```go
+findings, err := preflight.Run(ctx, stack, preflight.Opts{
+	Registry:   reg,                                   // loaded, validated
+	BreakGlass: &preflight.BreakGlassAssignment{       // optional: the plan half of the guard
+		PermissionSetARN: bgSetARN, PrincipalID: bgGroupID,
+	},
+})
+if err != nil {
+	return err // the preview failed
+}
+if err := preflight.Err(findings); err != nil {
+	return err // refuse the apply
+}
+```
+
+Without the automation API, write the events with
+`pulumi preview --event-log events.jsonl` and judge them with
+`preflight.Check(preflight.StepsFromEvents(preflight.ReadEventLog(f)), opts)`.
+
+| Guard | Refuses |
+| --- | --- |
+| `irreplaceable` | a replace (`replace`, `create-replacement`, `delete-replaced`, ...) or a delete of an `Account`, `OrganizationalUnit`, `PermissionSet` or `Organization` |
+| `break-glass` (plan) | a delete or replace of an `AccountAssignment` whose `permissionSetArn` and `principalId` are the break-glass ones |
+| `break-glass` (registry) | no `identity_center.break_glass`, or an account that no assignment of it reaches, directly or through an OU at any depth |
+| `scp-on-management` (plan) | a `PolicyAttachment` created, updated or replaced onto the root, the management account or an OU above it (`ProtectedTargets`: those with an id in the registry) without a waiver for that target |
+| `scp-on-management` (registry) | `scps` on the management account or an OU above it without a waiver |
+| `waiver-expired` | a waiver past its `expires` day, or one for a target that carries no policy or is not above the management account (a `root` waiver only applies to plans) |
+
+`Lockout(reg, now)`, `Plan(steps, PlanOpts)`, `ProtectedTargets(reg)` and
+`Waived(reg, now)` are the parts; `Check` runs both halves.
 
 ## `pkg/engine/baseline`
 
