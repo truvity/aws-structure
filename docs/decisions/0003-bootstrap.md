@@ -36,7 +36,18 @@ limited to 16 KiB.
 5. **Failure is closed.** Generated steps run under `bash -ec` after a
    `set -e`; with a lifecycle hook configured a failed download abandons the
    hook so the group replaces the instance.
-6. **Verbatim is a separate path.** A consumer adopting the package first
+6. **Secrets load on every boot.** A secret lands under `/run`, which is
+   empty after every stop and start, and both appliances use warm pools, where
+   a resume is a reboot. `cloud-init` runs `runcmd` once and `bootcmd` before
+   the network, so neither can do it. The composer instead writes a loader
+   script and a oneshot unit, `bootstrap-secrets.service`, ordered after
+   `network-online.target` and before the consumers, which get a drop-in that
+   requires it. The first-boot lifecycle action is abandoned on failure; a
+   resumed boot has none pending, so the instance is reported unhealthy
+   instead (`set-instance-health`), and the group replaces it. A first-boot
+   only load is an explicit opt-in (`FirstBootOnly`), and a `File` or
+   `Artifact` under `/run` is refused.
+7. **Verbatim is a separate path.** A consumer adopting the package first
    passes its existing user-data through `Verbatim` (byte-identical output,
    so the plan shows no diff) and moves pieces into fragments one at a time.
 
@@ -48,6 +59,8 @@ limited to 16 KiB.
   step sources): saves bytes but makes every step depend on a file written
   earlier, which `bootcmd` runs before. Each generated step carries its own
   small prelude instead; gzip removes most of the repetition.
+- Loading secrets in `bootcmd` (every boot): it runs before the network and
+  before the aws CLI is installed on a first boot.
 - A scanner heuristic for `password = value` assignments: too many false
   positives in ordinary scripts for a check with no override.
 

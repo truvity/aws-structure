@@ -141,10 +141,16 @@ type (
 		Start  bool
 	}
 
-	// SSMSecret reads one SecureString parameter at boot into a file under
-	// /run (tmpfs, so it never reaches the disk). The value is never in the
+	// SSMSecret reads one SecureString parameter into a file under /run
+	// (tmpfs, so it never reaches the disk). The value is never in the
 	// user-data; only the parameter name is, and it is listed in
 	// [Rendered].SSMParameters.
+	//
+	// /run is empty after every stop and start (a warm-pool resume is one),
+	// so by default the secret is loaded on EVERY boot: the composer writes a
+	// script and a systemd oneshot unit, bootstrap-secrets.service, that runs
+	// after the network is online. FirstBootOnly is the explicit opt-in to a
+	// single load in the first-boot steps.
 	SSMSecret struct {
 		// Parameter is an absolute parameter name such as /estate/token.
 		Parameter string
@@ -159,9 +165,13 @@ type (
 		// NAME="value" line; Var names it).
 		Format Format
 		Var    string
-		// Phase defaults to PhaseInstall; PhaseBoot reads the parameter on
-		// every boot, which a file under /run needs after a reboot.
-		Phase Phase
+		// Units are the systemd units that read Dest. Each gets a drop-in
+		// that makes it require and start after bootstrap-secrets.service,
+		// which in turn is ordered before it. Not with FirstBootOnly.
+		Units []string
+		// FirstBootOnly loads the secret once, in the first-boot steps, and
+		// not again after a reboot.
+		FirstBootOnly bool
 	}
 
 	// Step is a shell script, run by bash under "set -e". Steps run in the

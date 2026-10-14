@@ -27,6 +27,9 @@
 // caller uploads the objects (this package has no cloud dependency) and gives
 // the instance role s3:GetObject on their keys.
 //
+// Secrets load on every boot, from a generated oneshot unit, because /run is empty
+// after a stop and start (see [SSMSecret]).
+//
 // Failure is closed. Generated steps run under "set -e"; a download that does
 // not match its digest, or an object that cannot be fetched after five
 // attempts, stops the boot sequence. With [Options].Lifecycle set the step
