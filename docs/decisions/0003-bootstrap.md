@@ -42,12 +42,26 @@ limited to 16 KiB.
    the network, so neither can do it. The composer instead writes a loader
    script and a oneshot unit, `bootstrap-secrets.service`, ordered after
    `network-online.target` and before the consumers, which get a drop-in that
-   requires it. The first-boot lifecycle action is abandoned on failure; a
-   resumed boot has none pending, so the instance is reported unhealthy
-   instead (`set-instance-health`), and the group replaces it. A first-boot
-   only load is an explicit opt-in (`FirstBootOnly`), and a `File` or
-   `Artifact` under `/run` is refused.
-7. **Verbatim is a separate path.** A consumer adopting the package first
+   requires it. A first-boot only load is an explicit opt-in
+   (`FirstBootOnly`), and a `File` or `Artifact` under `/run` is refused.
+7. **The lifecycle hook is completed on every boot, by a unit.** With a warm
+   pool, Auto Scaling runs the launch hook twice: at `Warmed:Pending:Wait`
+   when the instance launches into the pool, and again at `Pending:Wait` when
+   it restarts to leave it ("Use lifecycle hooks with a warm pool", Amazon EC2
+   Auto Scaling User Guide, section "Lifecycle state transitions for
+   instances in a warm pool"; an instance launched directly into the group
+   has only the second). `runcmd` does not run on that second boot, so
+   `bootstrap-ready.service` (generated when `Options.Lifecycle` is set) runs
+   on every boot after the secret loader and the plan's units, checks that
+   they are active and sends CONTINUE. "No active Lifecycle Action" (a plain
+   reboot) is a no-op. Failure tries ABANDON first and falls back to
+   `set-instance-health Unhealthy` only if ABANDON is refused. We chose that
+   over reading the IMDS `autoscaling/target-lifecycle-state`, which says
+   where the instance is headed but not whether an action is pending, and
+   over a marker file, which guesses from history what the API can say
+   directly. The cost is that a refused call is how we learn "nothing
+   pending", so the CONTINUE path depends on the AWS message text.
+8. **Verbatim is a separate path.** A consumer adopting the package first
    passes its existing user-data through `Verbatim` (byte-identical output,
    so the plan shows no diff) and moves pieces into fragments one at a time.
 
