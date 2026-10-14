@@ -677,3 +677,77 @@ stops after Install and the unit file.
 `bootstrap.Verbatim(userData, limit)` returns already-rendered user-data
 unchanged (no header, no compression), gated on size and secrets only. It is
 the zero-diff first step of adopting the package.
+
+## `pkg/appliance`
+
+The EC2 appliance next to `pkg/bootstrap`: an Auto Scaling group, launch
+template, optional warm pool, launch lifecycle hook, least-privilege role,
+security group, the plan's S3 objects and optional alarms. Design:
+[decisions/0004-appliance.md](decisions/0004-appliance.md).
+
+```go
+res := appliance.Names{}.Resolve("router")            // physical names, before the plan is rendered
+plan, _ := bootstrap.New(bootstrap.Options{Lifecycle: res.Lifecycle(), Objects: &bootstrap.ObjectStore{Bucket: bucket, Prefix: "router"}})
+_ = plan.Add(fragments...)
+ud, _ := plan.Render()
+
+a, err := appliance.New(ctx, "router", &appliance.Args{
+	UserData: ud,
+	Objects:  appliance.ObjectsArgs{Bucket: bucket},
+	Image:    appliance.ImageArgs{NameFilter: "al2023-ami-2023.*-kernel-6.1-arm64", Architecture: "arm64"},
+	Instance: appliance.InstanceArgs{Type: "t4g.small"},
+	Group:    appliance.GroupArgs{SubnetIDs: subnets},
+	Hook:     &appliance.HookArgs{},       // ABANDON by default
+	WarmPool: &appliance.WarmPoolArgs{},   // optional; needs Hook
+	Refresh:  &appliance.RefreshArgs{},    // roll on a launch template change
+	Security: appliance.SecurityArgs{VPCID: vpc},
+})
+```
+
+| Input | Notes |
+| --- | --- |
+| `Names` | `Base` (default: the logical name), `Group`, `LaunchTemplate`, `Role`, `InstanceProfile`, `Hook` (default `<group>-launch`), `SecurityGroup` (fixed name; default: generated with prefix `<group>-`). `Names.Resolve(name)` returns them, and `.Lifecycle()` is what `bootstrap.Options.Lifecycle` needs. |
+| `UserData` | A `*bootstrap.Rendered`: `Plan.Render()` or `bootstrap.Verbatim`. Its `Objects` are uploaded to `Objects.Bucket` (`aws.s3.BucketObjectv2`, AES256 or the given KMS key) and the launch template and group depend on them. |
+| `Image` | Exactly one of `ID`, `NameFilter` (+ `Owners`, default `amazon`; `Architecture`) and `SSMParameter`. Resolved at deploy time and pinned in the launch template. |
+| `Instance` | `Type`, `HopLimit` (default 1; IMDSv2 is always required), `RootVolume` (encrypted), `PublicIP` (nil: no network interface block), `ExtraSecurityGroupIDs`. |
+| `Group` | `Min`/`Max`/`Desired` (default 1), `SubnetIDs`, `HealthCheckType`, `GracePeriodSeconds`, `EnabledMetrics`. |
+| `Hook` | nil: none. `Mode` `HookInline` (default, on the group, so it exists before the first launch) or `HookSeparate`; `HeartbeatTimeoutSeconds` (900); `DefaultResult` `ABANDON`, or `CONTINUE` only with `UnsafeDefaultContinue`. |
+| `WarmPool`, `Refresh` | nil: none. A warm pool without a hook is refused. |
+| `IAM` | `PermissionsBoundary`, `ManagedPolicyARNs`, `PolicyName` (default `appliance`), `SSMParameters`/`ObjectKeys` (extra grants), `Statements`, `StatementsFunc`, `ExtraInlinePolicies`, and `Policy`, which replaces the generated document. |
+| `Security` | `VPCID` or `ExistingGroups`; `Style` `RulesInline` (default), `RulesSeparate` (`aws.vpc.*Rule`) or `RulesLegacy` (`aws.ec2.SecurityGroupRule`); `Ingress` (a world-open rule needs `World: true`); `Egress` (nil: allow all; empty slice: none); `DeleteTimeout`. |
+| `Alarms` | `ActionARNs`, `OKActionARNs` and `Alarms[]` (`Suffix`, namespace, metric, statistic, comparison, threshold, period); dimensions default to the group. |
+| `Contribution` | What `appliance.Collect(modules...)` returns: fragments, statements, parameters, object keys, ingress rules and managed policies from optional modules. `Contribution.AddTo(plan)` feeds the fragments to the plan before rendering. |
+| `Compat` | `ComponentType`, `Flat`, `Names` (logical names), `Aliases` (by `Kind`), `ComponentAliases`, `GroupTagsExcludeCommon`. |
+
+The generated policy (`appliance.BootstrapStatements`, `appliance.Document`):
+`ssm:GetParameter` on exactly the parameters of `UserData.SSMParameters` and
+`IAM.SSMParameters` (Sid `ReadParameters`), `s3:GetObject` on exactly the plan's
+object keys (`ReadObjects`) and, with a hook, `autoscaling:CompleteLifecycleAction`
+and `autoscaling:SetInstanceHealth` on the group (`OwnGroup`), then the caller's
+statements. Lists are sorted and de-duplicated; the JSON field order is fixed.
+
+Logical names, by default (`<name>` is the `New` name): component
+`truvity:aws-structure:Appliance` `<name>`; children `<name>` for the role,
+instance profile, security group, launch template and group; `<name>-hook`
+(separate hook); `<name>-managed-<i>`; `<name>-ingress-<i>[-<j>]` and
+`<name>-egress-<i>[-<j>]` (separate rules); `<name>-object-<first 12 of the
+sha256>`; `<name>-alarm-<suffix>`. Every one is a `Compat` hook.
+
+Refusals, all at once and before anything is registered: no user-data; objects
+without a bucket; not exactly one image source; a bad instance type, hop limit,
+group size or name; no subnet; a warm pool without a hook or with a cap below
+the group maximum; a `CONTINUE` default without the acknowledgement; a bad
+boundary, parameter or object key; a statement with a bare `*` action or no
+resource; `IAM.Policy` together with generated grants; an ingress rule open to
+the world without `World`; a non-canonical CIDR; a metric alarm on a group
+metric that is not enabled; `Flat` with a component type.
+
+### Adopting an existing appliance without a replace
+
+Step A: pass the old user-data through `bootstrap.Verbatim`, the old policy
+through `IAM.Policy`, and the old logical names, component type and physical
+names through `Compat` and `Names`; the preview is empty. Step B: pass the
+composed plan and drop `IAM.Policy`: the launch template gets one new version
+(an instance refresh rolls it out) and the role's policy is tightened in
+place. `pkg/appliance/statusbox_test.go` proves step A against the resource
+set of the status box (`testdata/statusbox-resources.golden.json`).

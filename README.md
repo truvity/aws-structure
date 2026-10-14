@@ -95,6 +95,7 @@ None recorded at v0. A repository that adopts it adds a line here.
   and every refusal.
 - [docs/safety.md](docs/safety.md) — what is refused and why.
 - [docs/decisions/0003-bootstrap.md](docs/decisions/0003-bootstrap.md) — the cloud-init user-data composer (`pkg/bootstrap`).
+- [docs/decisions/0004-appliance.md](docs/decisions/0004-appliance.md) — the EC2 appliance: group, launch template, role, hook, security group (`pkg/appliance`).
 - [docs/doctrine.md](docs/doctrine.md) — why it is shaped this way.
 - [docs/decisions/](docs/decisions/) — the decisions, one page each.
 - [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
