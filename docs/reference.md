@@ -524,3 +524,61 @@ viewer, default, ACK IAM, CAPA, EKS Auto Mode node, deploy, project, audit.
 `Baseline`, `Trail`, `GuardDuty`, `IAM`; `fleet.DeployUnits`. Component names are
 `baseline-<account>`, `cloudtrail-<account>`, `guardduty-<account>-<region>`, `iam-<account>`,
 `iam-root`, `orgunit-<ou>`; the IAM boundary providers are `provider-<account>`.
+
+## `pkg/bootstrap`
+
+Composes the cloud-init user-data of an instance from fragments. Pure Go, no
+Pulumi or AWS import. Design: [decisions/0003-bootstrap.md](decisions/0003-bootstrap.md).
+
+```go
+p, err := bootstrap.New(bootstrap.Options{
+	Lifecycle: &bootstrap.Lifecycle{ASGName: asg, HookName: hook}, // abandon on a failed download
+	Objects:   &bootstrap.ObjectStore{Bucket: bucket, Prefix: "appliance"},
+})
+err = p.Add(
+	bootstrap.Compose("base", bootstrap.Package{Name: "jq"}, bootstrap.File{Path: "/etc/app.conf", Content: conf}),
+	connector.Fragment("connector", bootstrap.RunAuto), // a UnitFragment
+)
+r, err := p.Render() // r.UserData, r.Objects (upload them), r.SSMParameters (role policy)
+```
+
+| Item | Becomes |
+| --- | --- |
+| `Package{Name}` | `packages:` (sorted, repeats collapse) |
+| `File{Path, Mode, Owner, Content, Encoding, Delivery, Defer}` | `write_files:` entry, or an S3 object fetched at first boot. `Delivery`: `DeliveryAuto` (inline unless the size gates move it), `DeliveryInline`, `DeliveryObject` |
+| `Artifact{URL, SHA256, Dest, Mode, Run}` | first-boot download, `sha256sum -c`, install, optionally run; five attempts, then the boot stops |
+| `Binary{Name, Dest, PerArch}` | the same, with the build for the instance's `uname -m` (`amd64`, `arm64`) |
+| `Unit{Name, Content, DropIn, Enable, Start}` | the unit file (or `<name>.d/10-bootstrap.conf`), one `daemon-reload`, then `systemctl enable`/`start` |
+| `SSMSecret{Parameter, Dest, Mode, Owner, Format, Var, Phase}` | reads the SecureString into a file under `/run` (dir 0700, file 0600 or 0400), `FormatRaw` or `FormatEnv`; the value is never in the user-data and the name is in `Rendered.SSMParameters` |
+| `Step{Name, Phase, Order, Script}` | `runcmd` (`PhaseInstall`, first boot) or `bootcmd` (`PhaseBoot`, every boot), run by `bash -ec` |
+
+Steps run in (phase, order, registration) order. Generated steps use object
+fetch -1000, artifacts and binaries -200, secrets -100, `daemon-reload` -50
+and unit enable/start 100; a user step defaults to 0. The `set -e` that heads
+each list makes a failing step stop the sequence.
+
+Size: `Options.Limit` (hard, default 16384), `Options.SoftLimit` (default
+12288), `Options.Gzip` (`GzipAuto`, `GzipNever`, `GzipAlways`). Past the soft
+limit the text is gzipped, then `DeliveryAuto` files go to objects largest
+first, until the result fits; over the hard limit `Render` fails.
+`Object.Key` is `<Prefix>/<Dir>/<sha256>.<ext>` (`Dir` defaults to `config`).
+The caller uploads the objects and lets the instance role `s3:GetObject` them.
+
+Refusals: a path or unit written by two fragments; secret material (private
+keys, AWS access keys, GitHub, GitLab and Slack tokens) in a file, unit, step
+or verbatim text; a non-https, credentialed or presigned download URL; a
+download without a lower-case sha256; a secret file outside a directory below
+`/run`; `DeliveryObject` without `Options.Objects`; an unsafe path, mode,
+owner, package or parameter name.
+
+`UnitFragment{Install, Unit, UnitPath, LoadToken, Start, SSMParameters}` has
+the field set of `truvity/edge`'s `instanceconnector.Fragment`.
+`.Fragment(name, bootstrap.RunAuto)` runs Install, writes the unit, runs
+LoadToken, then Start, all at first boot; `RunManual` stops after the unit
+file. A reboot clears `/run`: a service that must reload its token every boot
+adds a `PhaseBoot` step or an `SSMSecret{Phase: bootstrap.PhaseBoot}`, which
+runs before the network is up on a reboot and so retries.
+
+`bootstrap.Verbatim(userData, limit)` returns already-rendered user-data
+unchanged (no header, no compression), gated on size and secrets only. It is
+the zero-diff first step of adopting the package.
