@@ -14,12 +14,12 @@ engine, preflight, drift) and on [k8s](https://github.com/truvity/k8s)
 | What | Where |
 | --- | --- |
 | Go module `github.com/truvity/aws-structure` | `go get github.com/truvity/aws-structure` |
-| `pkg/registry` — the schema, a strict loader and the validator | Go package, no cloud dependency |
-
-Only `pkg/registry` exists today. The engine, the preflight, drift
-checking, the `aws.ini` renderer and the CLI are planned and listed under
-[Status](#status); each arrives as its own reviewed change and its own
-[CHANGELOG](CHANGELOG.md) entry.
+| `awsorgctl`, the command line | the release archives, or `go install github.com/truvity/aws-structure/cmd/awsorgctl@latest` |
+| `pkg/registry`: the schema, a strict loader and the validator | no cloud dependency |
+| `pkg/engine/{org,sso,iam,baseline,trail,guardduty}`: Pulumi components with documented child names | [docs/reference.md](docs/reference.md) |
+| `pkg/preflight`: the refusals in front of an apply | [docs/safety.md](docs/safety.md) |
+| `pkg/drift`: the live read-back and the access-roles map | read only |
+| `pkg/fleet`, `pkg/boundary`, `pkg/alerting`, `pkg/cost`, `pkg/backend`, `pkg/dns`, `pkg/ssosync`, `pkg/awsconfig`, `pkg/awsprofile`, `pkg/bootstrap`, `pkg/appliance` | the estate-wide pieces an organization's root stacks are built from ([docs/reference.md](docs/reference.md)) |
 
 ## Who it is for
 
@@ -42,7 +42,7 @@ problem at once. Refusals include duplicate names, an account without an
 OU, an SCP over 5120 bytes or not JSON, and permission-set include cycles
 ([docs/reference.md](docs/reference.md)).
 
-**Components with stable names.** The engine will be Pulumi
+**Components with stable names.** The engine is Pulumi
 `ComponentResource`s whose child names are documented API. Adopting one
 over existing infrastructure keeps URNs through no-parent aliases, proven
 by an empty preview ([docs/adoption.md](docs/adoption.md)).
@@ -50,8 +50,10 @@ by an empty preview ([docs/adoption.md](docs/adoption.md)).
 **The engine must not be able to do the worst thing.** Replacing an
 account, an OU, a permission set or the organization destroys state that
 lives outside the stack, and the follow-up diff reads clean. The preflight
-will refuse such plans, and service control policies stay dormant until a
-lockout check exists ([docs/safety.md](docs/safety.md)).
+refuses such plans, guards the break-glass way into every account, and keeps
+service control policies off the management account's path without a
+waiver; accounts, OUs and permission sets are also `protect`ed and retained
+([docs/safety.md](docs/safety.md)).
 
 ## Install and a worked example
 
@@ -71,6 +73,20 @@ for _, a := range reg.Accounts {
 	fmt.Println(a.Name, "in", a.OU)
 }
 ```
+
+## The command line
+
+```sh
+awsorgctl validate     -registry registry.yaml
+pulumi preview --event-log preview.jsonl            # in your stack
+awsorgctl preflight    -registry registry.yaml -events preview.jsonl
+awsorgctl drift        -registry registry.yaml -profile <management profile> -sso-region <region>
+awsorgctl access-roles -registry registry.yaml -profile <management profile> -out access-roles.yaml
+awsorgctl aws-ini      -registry registry.yaml -start-url <portal URL> -sso-region <region> -region <region>
+```
+
+Nothing it runs writes to AWS. `preflight` exits 1 on a refusal and
+`drift -fail` on drift, so either can gate a pipeline.
 
 ## Consumers
 
@@ -114,19 +130,12 @@ registry parser's own tests, by path, with the reason in the script.
 ## Status
 
 v0: the API may still move in a minor release, and every move is a
-`Breaking:` bullet in the [CHANGELOG](CHANGELOG.md). Planned, in order:
-
-- `pkg/registry` (present): schema, strict loading, validation.
-- `pkg/engine`: components for OUs, accounts, SCPs (dormant), Identity
-  Center and the per-account baseline; the organization is looked up only.
-- `pkg/preflight`: refuses replacing accounts, OUs, permission sets or the
-  organization, and guards against lockout.
-- `pkg/drift`: live read-back of the structure and the access-roles map.
-- `pkg/awsconfig`: renders an Identity Center `aws.ini` and the
-  access-roles map.
-- `pkg/identitysource` (optional): Google Workspace to Identity Center
-  groups, through ssosync.
-- `awsorgctl`: the command line over all of it.
+`Breaking:` bullet in the [CHANGELOG](CHANGELOG.md). Present: the registry,
+the engine (the organization is looked up only; SCPs are dormant), the
+preflight, drift and the access-roles map, the `aws.ini` renderer, ssosync
+(Google Workspace to Identity Center groups) and `awsorgctl`. Next, each its
+own decision: activating service control policies behind the preflight's
+lockout guard, on a test OU first.
 
 ## Development
 
