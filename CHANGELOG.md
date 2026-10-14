@@ -18,6 +18,16 @@ them, and for anything breaking, what to do.
   - A waiver takes `guard` (only `scp-on-management`, `GuardSCPOnManagement`), `target` (an OU or account name, or `root`), `reason` and `exit_condition` (both required) and an optional `expires` date (`YYYY-MM-DD`, `DateLayout`). One waiver per guard and target.
 
   Both keys are optional for the registry, which stays valid without them. The preflight's lockout guard refuses a registry that has no `break_glass`. Additive.
+- **`pkg/drift`: read the organization back and compare it with the registry; the access-roles map.**
+  - `Read(ctx, Clients{...})` walks the organization: the root, the OUs, the accounts with their state, and the service control policies on each. It also reads Identity Center: permission sets, groups, users and assignments in every active account.
+  - `Compare(registry, live)` reports, sorted:
+    - `unmanaged` (made by hand, or a policy attached while dormant; `FullAWSAccess` excepted);
+    - `missing`, `moved`, `edited` (an OU name or account email);
+    - `unrecorded-id` (it exists, but the registry has no id for it);
+    - `not-active` (suspended or closed).
+  - `AccessRoles(ctx, accounts, clientFor)` lists the roles Identity Center provisioned in each account (`AWSReservedSSO_<set>_<suffix>`, with and without the path). `RenderAccessRoles` writes them as YAML under a header.
+  - Read only: every call is a List or Describe. The clients are inputs: small interfaces the SDK clients satisfy.
+  - New package, additive. New dependencies: the AWS SDK's `organizations`, `ssoadmin`, `identitystore` and `iam` clients.
 
 ## v0.23.0
 
