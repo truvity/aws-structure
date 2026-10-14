@@ -81,7 +81,10 @@ func fullPlan(t *testing.T, o bootstrap.Options) *bootstrap.Plan {
 				"amd64": {URL: "https://example.com/app-amd64", SHA256: strings.Repeat("ab", 32)},
 			}},
 			bootstrap.Artifact{URL: "https://example.com/tool.sh", SHA256: digest, Dest: "/opt/tool/run.sh", Run: true},
-			bootstrap.SSMSecret{Parameter: "/example/app/token", Dest: "/run/app/token.env", Format: bootstrap.FormatEnv, Var: "APP_TOKEN", Owner: "app"},
+			bootstrap.SSMSecret{
+				Parameter: "/example/app/token", Dest: "/run/app/token.env", Format: bootstrap.FormatEnv, Var: "APP_TOKEN", Owner: "app",
+				Units: []string{"app"},
+			},
 			bootstrap.Unit{Name: "app", Content: "[Service]\nExecStart=/usr/local/bin/app\n", Enable: true, Start: true},
 			bootstrap.Step{Name: "greet", Order: 10, Script: "echo hello\n"},
 			bootstrap.Step{Name: "every boot", Phase: bootstrap.PhaseBoot, Script: "echo boot\n"},
@@ -357,22 +360,36 @@ func TestUnitFragment(t *testing.T) {
 	if got := strings.Join(ra.SSMParameters, ","); got != "/example/a,/example/conn/token" {
 		t.Errorf("parameters = %q", got)
 	}
-	i, l, s := strings.Index(ra.CloudConfig, "conn install"), strings.Index(ra.CloudConfig, "conn load token"), strings.Index(ra.CloudConfig, "conn start")
-	if i <= 0 || i >= l || l >= s {
-		t.Errorf("want install, load token, start in that order, got %d %d %d", i, l, s)
+	doc := parse(t, ra.CloudConfig)
+	runcmd := strings.Join(cmdScripts(doc["runcmd"]), "\n")
+	loader := fileContent(t, doc, "/usr/local/lib/bootstrap/secrets.sh")
+	if !strings.Contains(runcmd, "conn install") || !strings.Contains(runcmd, "conn start") || strings.Contains(runcmd, "umask 077") {
+		t.Error("install and start run on the first boot; the token load must not")
+	}
+	if !strings.Contains(loader, "umask 077") || !strings.Contains(loader, "systemctl start --no-block 'conn.service'") {
+		t.Errorf("the loader must load the token and start the unit on every boot:\n%s", loader)
+	}
+	if d := fileContent(t, doc, "/etc/systemd/system/conn.service.d/20-bootstrap-secrets.conf"); !strings.Contains(d, "Requires=bootstrap-secrets.service") {
+		t.Errorf("drop-in = %q", d)
 	}
 
 	manual := newPlan(t, bootstrap.Options{})
 	must(t, manual.Add(f.Fragment("conn", bootstrap.RunManual)))
 	rm, err := manual.Render()
 	must(t, err)
-	if strings.Contains(rm.CloudConfig, "conn start") || strings.Contains(rm.CloudConfig, "load token") || !strings.Contains(rm.CloudConfig, "conn install") {
+	if strings.Contains(rm.CloudConfig, "conn start") || strings.Contains(rm.CloudConfig, "bootstrap-secrets") ||
+		!strings.Contains(rm.CloudConfig, "conn install") {
 		t.Error("manual mode must install and write the unit only")
 	}
 	if len(rm.SSMParameters) != 2 {
 		t.Error("manual mode must still report the parameters")
 	}
 
+	odd := f
+	odd.UnitPath = "/opt/conn.service"
+	if err := newPlan(t, bootstrap.Options{}).Add(odd.Fragment("x", bootstrap.RunAuto)); err == nil {
+		t.Error("a token loader for a unit outside /etc/systemd/system must be refused")
+	}
 	if err := newPlan(t, bootstrap.Options{}).Add(bootstrap.UnitFragment{Unit: "[Service]\n"}.Fragment("x", bootstrap.RunAuto)); err == nil {
 		t.Error("a unit without a path must be refused")
 	}
@@ -388,6 +405,39 @@ func TestVerbatim(t *testing.T) {
 	if _, err := bootstrap.Verbatim(strings.Repeat("x", 100), 50); err == nil {
 		t.Error("verbatim over the limit must fail")
 	}
+}
+
+func parse(t *testing.T, text string) map[string]any {
+	t.Helper()
+	var doc map[string]any
+	must(t, yaml.Unmarshal([]byte(text), &doc))
+
+	return doc
+}
+
+// cmdScripts returns the script of each bash -ec entry of a command list.
+func cmdScripts(list any) []string {
+	var out []string
+	cmds, _ := list.([]any)
+	for _, c := range cmds {
+		if argv, ok := c.([]any); ok {
+			out = append(out, argv[2].(string))
+		}
+	}
+
+	return out
+}
+
+func fileContent(t *testing.T, doc map[string]any, path string) string {
+	t.Helper()
+	for _, f := range doc["write_files"].([]any) {
+		if m := f.(map[string]any); m["path"] == path {
+			return m["content"].(string)
+		}
+	}
+	t.Fatalf("no write_files entry for %s", path)
+
+	return ""
 }
 
 func b64(s string) string {
@@ -434,6 +484,12 @@ func TestCloudConfigShape(t *testing.T) {
 				}
 			}
 		}
+		if haveBash == nil {
+			sh := fileContent(t, doc, "/usr/local/lib/bootstrap/secrets.sh")
+			if out, err := exec.Command("bash", "-n", "-c", sh).CombinedOutput(); err != nil {
+				t.Errorf("%s: secrets.sh does not parse: %v\n%s", name, err, out)
+			}
+		}
 		for _, list := range []string{"bootcmd", "runcmd"} {
 			cmds, _ := doc[list].([]any)
 			if len(cmds) > 0 && cmds[0] != "set -e" {
@@ -456,3 +512,89 @@ func TestCloudConfigShape(t *testing.T) {
 }
 
 func base64Encoder(w io.Writer) io.WriteCloser { return base64.NewEncoder(base64.StdEncoding, w) }
+
+func TestSecretsLoadOnEveryBoot(t *testing.T) {
+	lc := &bootstrap.Lifecycle{ASGName: "example-asg", HookName: "example-hook"}
+	doc := parse(t, mustRender(t, fullPlan(t, bootstrap.Options{Lifecycle: lc})).CloudConfig)
+
+	// The default is every boot: nothing that reads SSM runs in the first-boot list.
+	for _, list := range []string{"runcmd", "bootcmd"} {
+		for _, s := range cmdScripts(doc[list]) {
+			if strings.Contains(s, "get-parameter") {
+				t.Errorf("a secret is read in %s, which does not run again after a stop and start:\n%s", list, s)
+			}
+		}
+	}
+	loader := fileContent(t, doc, "/usr/local/lib/bootstrap/secrets.sh")
+	for _, want := range []string{
+		"aws ssm get-parameter", "--with-decryption", "sleep $((i * 3))",
+		"set-instance-health", "--health-status Unhealthy", // a later boot: no launch action is pending
+		"--lifecycle-action-result ABANDON", // the first boot
+		"/var/lib/bootstrap/secrets-loaded",
+	} {
+		if !strings.Contains(loader, want) {
+			t.Errorf("loader lacks %q", want)
+		}
+	}
+	unit := fileContent(t, doc, "/etc/systemd/system/bootstrap-secrets.service")
+	for _, want := range []string{
+		"Type=oneshot", "RemainAfterExit=yes", "After=network-online.target", "Wants=network-online.target", "Before=app.service", "WantedBy=multi-user.target",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("unit lacks %q:\n%s", want, unit)
+		}
+	}
+	d := fileContent(t, doc, "/etc/systemd/system/app.service.d/20-bootstrap-secrets.conf")
+	if !strings.Contains(d, "Requires=bootstrap-secrets.service") || !strings.Contains(d, "After=bootstrap-secrets.service") {
+		t.Errorf("consumer drop-in = %q", d)
+	}
+	if !strings.Contains(strings.Join(cmdScripts(doc["runcmd"]), "\n"), "systemctl enable --now bootstrap-secrets.service") {
+		t.Error("the first boot must enable and start the loader")
+	}
+	// Without a lifecycle the loader does not call the Auto Scaling API.
+	plain := fileContent(t, parse(t, mustRender(t, fullPlan(t, bootstrap.Options{})).CloudConfig), "/usr/local/lib/bootstrap/secrets.sh")
+	if strings.Contains(plain, "autoscaling") {
+		t.Error("autoscaling calls without Options.Lifecycle")
+	}
+}
+
+func TestFirstBootOnlyIsExplicit(t *testing.T) {
+	p := newPlan(t, bootstrap.Options{})
+	must(t, p.AddItems(bootstrap.SSMSecret{Parameter: "/example/once", Dest: "/run/once/token", FirstBootOnly: true}))
+	r := mustRender(t, p)
+	doc := parse(t, r.CloudConfig)
+	if !strings.Contains(strings.Join(cmdScripts(doc["runcmd"]), "\n"), "get-parameter") || strings.Contains(r.CloudConfig, "bootstrap-secrets") {
+		t.Error("FirstBootOnly reads in the first-boot steps and builds no loader")
+	}
+	q := newPlan(t, bootstrap.Options{})
+	if err := q.AddItems(bootstrap.SSMSecret{Parameter: "/example/p", Dest: "/run/x/p", FirstBootOnly: true, Units: []string{"x"}}); err == nil {
+		t.Error("a unit cannot depend on a first-boot-only secret")
+	}
+}
+
+func TestNothingUnderRunIsWrittenOnce(t *testing.T) {
+	for name, it := range map[string]bootstrap.Item{
+		"file":     bootstrap.File{Path: "/run/app/token", Content: "x"},
+		"artifact": bootstrap.Artifact{URL: "https://example.com/x", SHA256: digest, Dest: "/run/app/x"},
+	} {
+		if err := newPlan(t, bootstrap.Options{}).AddItems(it); err == nil {
+			t.Errorf("%s under /run: want a refusal, the directory is empty after a reboot", name)
+		}
+	}
+}
+
+func TestGeneratedPathCollision(t *testing.T) {
+	p := fullPlan(t, bootstrap.Options{})
+	must(t, p.AddItems(bootstrap.File{Path: "/usr/local/lib/bootstrap/secrets.sh", Content: "x"}))
+	if _, err := p.Render(); err == nil {
+		t.Error("a file at the loader's path must be refused")
+	}
+}
+
+func mustRender(t *testing.T, p *bootstrap.Plan) *bootstrap.Rendered {
+	t.Helper()
+	r, err := p.Render()
+	must(t, err)
+
+	return r
+}

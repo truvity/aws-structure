@@ -549,11 +549,11 @@ r, err := p.Render() // r.UserData, r.Objects (upload them), r.SSMParameters (ro
 | `Artifact{URL, SHA256, Dest, Mode, Run}` | first-boot download, `sha256sum -c`, install, optionally run; five attempts, then the boot stops |
 | `Binary{Name, Dest, PerArch}` | the same, with the build for the instance's `uname -m` (`amd64`, `arm64`) |
 | `Unit{Name, Content, DropIn, Enable, Start}` | the unit file (or `<name>.d/10-bootstrap.conf`), one `daemon-reload`, then `systemctl enable`/`start` |
-| `SSMSecret{Parameter, Dest, Mode, Owner, Format, Var, Phase}` | reads the SecureString into a file under `/run` (dir 0700, file 0600 or 0400), `FormatRaw` or `FormatEnv`; the value is never in the user-data and the name is in `Rendered.SSMParameters` |
-| `Step{Name, Phase, Order, Script}` | `runcmd` (`PhaseInstall`, first boot) or `bootcmd` (`PhaseBoot`, every boot), run by `bash -ec` |
+| `SSMSecret{Parameter, Dest, Mode, Owner, Format, Var, Units, FirstBootOnly}` | reads the SecureString into a file under `/run` (dir 0700, file 0600 or 0400), `FormatRaw` or `FormatEnv`, on **every boot** by default (see below); the value is never in the user-data and the name is in `Rendered.SSMParameters` |
+| `Step{Name, Phase, Order, Script}` | `runcmd` (`PhaseInstall`, first boot) or `bootcmd` (`PhaseBoot`, every boot, before the network), run by `bash -ec` |
 
 Steps run in (phase, order, registration) order. Generated steps use object
-fetch -1000, artifacts and binaries -200, secrets -100, `daemon-reload` -50
+fetch -1000, artifacts and binaries -200, first-boot-only secrets -100, `daemon-reload` -50, the secret loader -40
 and unit enable/start 100; a user step defaults to 0. The `set -e` that heads
 each list makes a failing step stop the sequence.
 
@@ -571,13 +571,45 @@ download without a lower-case sha256; a secret file outside a directory below
 `/run`; `DeliveryObject` without `Options.Objects`; an unsafe path, mode,
 owner, package or parameter name.
 
+### Secrets load on every boot
+
+`/run` is empty after every stop and start, and a warm-pool resume is one.
+So a secret is loaded on every boot by default. When the plan has an
+`SSMSecret` (without `FirstBootOnly`) or a `UnitFragment` with `LoadToken`
+under `RunAuto`, the composer writes three kinds of file inline:
+
+- `/usr/local/lib/bootstrap/secrets.sh`: one `bash -e` block per secret, five
+  attempts each with growing sleeps, then a marker
+  `/var/lib/bootstrap/secrets-loaded` and a `systemctl start --no-block` of
+  each `UnitFragment` unit.
+- `/etc/systemd/system/bootstrap-secrets.service`: `Type=oneshot`,
+  `RemainAfterExit=yes`, `Wants=` and `After=network-online.target`,
+  `Before=` the consuming units, `WantedBy=multi-user.target`. A first-boot
+  step enables and starts it, after `daemon-reload`.
+- `/etc/systemd/system/<unit>.d/20-bootstrap-secrets.conf` for each consumer
+  (`SSMSecret.Units`, or the unit of a `UnitFragment`): `Requires=` and
+  `After=bootstrap-secrets.service`, so a consumer does not start without its
+  secret.
+
+With `Options.Lifecycle`, a failed load tells the Auto Scaling group. On the
+first boot (no marker) it abandons the launch lifecycle action, so the group
+replaces the instance. On a later boot, a warm-pool resume included, there is
+no launch action pending, so it runs `aws autoscaling set-instance-health
+--health-status Unhealthy` instead. The instance role needs
+`autoscaling:CompleteLifecycleAction` and `autoscaling:SetInstanceHealth`,
+besides `ssm:GetParameter` on `Rendered.SSMParameters`. The paths above are
+generated: a `File` at one of them is refused. `SSMSecret.FirstBootOnly` is
+the opt-in to one load in the first-boot steps (no loader, no `Units`). A
+`File` or `Artifact` under `/run` is refused for the same reason; so is a
+`UnitFragment` whose `LoadToken` belongs to a unit outside
+`/etc/systemd/system/`. A free-form `Step` that writes under `/run` is the
+caller's to make `PhaseBoot`.
+
 `UnitFragment{Install, Unit, UnitPath, LoadToken, Start, SSMParameters}` has
 the field set of `truvity/edge`'s `instanceconnector.Fragment`.
-`.Fragment(name, bootstrap.RunAuto)` runs Install, writes the unit, runs
-LoadToken, then Start, all at first boot; `RunManual` stops after the unit
-file. A reboot clears `/run`: a service that must reload its token every boot
-adds a `PhaseBoot` step or an `SSMSecret{Phase: bootstrap.PhaseBoot}`, which
-runs before the network is up on a reboot and so retries.
+`.Fragment(name, bootstrap.RunAuto)` runs Install, writes the unit and runs
+Start at first boot, and loads the token on every boot as above; `RunManual`
+stops after Install and the unit file.
 
 `bootstrap.Verbatim(userData, limit)` returns already-rendered user-data
 unchanged (no header, no compression), gated on size and secrets only. It is

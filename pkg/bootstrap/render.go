@@ -118,8 +118,10 @@ func (p *Plan) spillOrder() []string {
 
 func (p *Plan) compose(spilled map[string]bool) (string, []Object, error) {
 	var cfg cloudConfig
+	var err error
 	cfg.Packages = sortedKeys(p.packages)
 
+	var wfs []writeFile
 	var objs []object
 	for _, pth := range sortedKeys(p.files) {
 		f := p.files[pth]
@@ -134,15 +136,28 @@ func (p *Plan) compose(spilled map[string]bool) (string, []Object, error) {
 		if f.Encoding == "base64" {
 			wf.Encoding = "b64"
 		}
-		cfg.WriteFiles = append(cfg.WriteFiles, wf)
+		wfs = append(wfs, wf)
 	}
+
+	gen, err := p.generatedFiles()
+	if err != nil {
+		return "", nil, err
+	}
+	wfs = append(wfs, gen...)
+	sort.Slice(wfs, func(a, b int) bool { return wfs[a].Path < wfs[b].Path })
+	cfg.WriteFiles = wfs
 
 	steps := append([]stepItem(nil), p.steps...)
 	if len(objs) > 0 {
 		steps = append(steps, stepItem{Phase: PhaseInstall, Order: -1000, Seq: -2, Name: "fetch objects", Script: p.fetchScript(objs)})
 	}
-	if hasUnitFiles(p.files) {
+	if hasUnitFiles(p.files) || len(p.snips) > 0 {
 		steps = append(steps, stepItem{Phase: PhaseInstall, Order: -50, Seq: -1, Name: "systemd daemon-reload", Script: "systemctl daemon-reload\n"})
+	}
+	if len(p.snips) > 0 {
+		steps = append(steps, stepItem{
+			Phase: PhaseInstall, Order: -40, Seq: -1, Name: "load boot-time secrets", Script: "systemctl enable --now " + secretsUnitName + "\n",
+		})
 	}
 	if s := p.unitControl(); s != "" {
 		steps = append(steps, stepItem{Phase: PhaseInstall, Order: 100, Seq: -1, Name: "systemd units", Script: s})
@@ -198,6 +213,32 @@ func (p *Plan) compose(spilled map[string]bool) (string, []Object, error) {
 	sort.Slice(out, func(a, b int) bool { return out[a].Key < out[b].Key })
 
 	return buf.String(), out, nil
+}
+
+// generatedFiles are the secret loader, its unit and the consumers'
+// drop-ins; a path the caller also writes is a conflict.
+func (p *Plan) generatedFiles() ([]writeFile, error) {
+	if len(p.snips) == 0 {
+		return nil, nil
+	}
+	mk := func(path, mode, content string) writeFile {
+		return writeFile{Path: path, Owner: "root:root", Permissions: mode, Content: content}
+	}
+	out := []writeFile{
+		mk(secretsScriptPath, "0755", p.secretsScript()),
+		mk(secretsUnitPath, "0644", p.secretsUnit()),
+	}
+	for _, u := range sortedKeys(p.consume) {
+		out = append(out, mk("/etc/systemd/system/"+u+".d/"+secretsDropIn, "0644", secretsConsumerDropIn))
+	}
+	var errs []error
+	for _, f := range out {
+		if prev, ok := p.files[f.Path]; ok {
+			errs = append(errs, fmt.Errorf("path %s is generated for the secret loader and also written by %q", f.Path, prev.by))
+		}
+	}
+
+	return out, errors.Join(errs...)
 }
 
 func hasUnitFiles(files map[string]*fileItem) bool {

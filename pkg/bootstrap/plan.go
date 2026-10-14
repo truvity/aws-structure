@@ -59,6 +59,9 @@ type (
 		unitSet  map[string]string
 		ctl      map[string]ctlItem
 		steps    []stepItem
+		snips    []snippet
+		consume  map[string]bool
+		startAt  map[string]bool
 		params   map[string]bool
 	}
 
@@ -69,6 +72,9 @@ type (
 	}
 
 	ctlItem struct{ enable, start bool }
+
+	// snippet is a script that runs on every boot from bootstrap-secrets.
+	snippet struct{ name, body string }
 
 	stepItem struct {
 		Phase  Phase
@@ -142,6 +148,8 @@ func New(opts Options) (*Plan, error) {
 		unitSet:  map[string]string{},
 		ctl:      map[string]ctlItem{},
 		params:   map[string]bool{},
+		consume:  map[string]bool{},
+		startAt:  map[string]bool{},
 	}, nil
 }
 
@@ -252,6 +260,9 @@ func (p *Plan) addFile(i File) error {
 	if err := checkPath("file path", i.Path); err != nil {
 		return err
 	}
+	if strings.HasPrefix(i.Path, "/run/") {
+		return fmt.Errorf("file %s: /run is empty after a reboot and write_files runs once; use an SSMSecret, or a PhaseBoot step", i.Path)
+	}
 	mode, err := normMode(i.Mode, "0644")
 	if err != nil {
 		return fmt.Errorf("file %s: %w", i.Path, err)
@@ -317,6 +328,9 @@ func (p *Plan) addArtifact(i Artifact) error {
 	what := "artifact " + i.Dest
 	if err := errors.Join(checkPath("artifact dest", i.Dest), checkDownload(what, i.URL, i.SHA256)); err != nil {
 		return err
+	}
+	if strings.HasPrefix(i.Dest, "/run/") {
+		return fmt.Errorf("%s: /run is empty after a reboot and an artifact is installed once", what)
 	}
 	def := "0644"
 	if i.Run {
@@ -424,11 +438,50 @@ func (p *Plan) addSSMSecret(i SSMSecret) error {
 		return err
 	}
 	i.Mode = mode
+	if i.FirstBootOnly && len(i.Units) > 0 {
+		return fmt.Errorf("ssm secret %s: Units need the every-boot loader; drop FirstBootOnly", i.Parameter)
+	}
+	var units []string
+	for _, u := range i.Units {
+		n, err := unitName(u)
+		if err != nil {
+			return fmt.Errorf("ssm secret %s: %w", i.Parameter, err)
+		}
+		units = append(units, n)
+	}
 	p.params[i.Parameter] = true
-	order := -100
-	p.addStepItem(i.Phase, order, "secret "+i.Parameter, p.secretScript(i))
+	if i.FirstBootOnly {
+		p.addStepItem(PhaseInstall, -100, "secret "+i.Parameter, p.prelude(true)+secretBody(i))
+
+		return nil
+	}
+	p.addSnippet("secret "+i.Parameter, secretBody(i), units, false)
 
 	return nil
+}
+
+func unitName(n string) (string, error) {
+	if !unitRe.MatchString(n) {
+		return "", fmt.Errorf("unit %q: not a unit name", n)
+	}
+	if !strings.Contains(n, ".") {
+		n += ".service"
+	}
+
+	return n, nil
+}
+
+// addSnippet registers a script for bootstrap-secrets.service. consumers get
+// a drop-in ordering them after it; start says the loader also starts them
+// (a unit nothing else starts on a reboot).
+func (p *Plan) addSnippet(name, body string, consumers []string, start bool) {
+	p.snips = append(p.snips, snippet{name: name, body: body})
+	for _, u := range consumers {
+		p.consume[u] = true
+		if start {
+			p.startAt[u] = true
+		}
+	}
 }
 
 func (p *Plan) addStep(i Step) error {
