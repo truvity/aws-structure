@@ -1,14 +1,26 @@
 # Tag-triggered release through truvity/ci-workflows release-public.yaml.
 #
-# A library: the tag is the Go module's version and needs no build step. No
-# binary is built yet, so `builds` is skipped; add one here when a command
-# is added, and archives follow from it.
+# The tag is the Go module's version, and the release carries the awsorgctl
+# binaries.
 version: 2
 
 project_name: aws-structure
 
 builds:
-  - skip: true
+  - id: awsorgctl
+    main: ./cmd/awsorgctl
+    binary: awsorgctl
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.Version={{.Version}}
+
+archives:
+  - id: awsorgctl
+    ids: [awsorgctl]
+    formats: [tar.gz]
+    name_template: "awsorgctl_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: checksums.txt
@@ -28,3 +40,4 @@ release:
     ## aws-structure {{ .Tag }}
 
     Go module: `go get github.com/truvity/aws-structure@{{ .Tag }}`.
+    CLI: the `awsorgctl` archives below, or `go install github.com/truvity/aws-structure/cmd/awsorgctl@{{ .Tag }}`.
