@@ -26,6 +26,29 @@ type Registry struct {
 
 	// Baseline is what every account carries unless it opts out.
 	Baseline Baseline `yaml:"baseline"`
+
+	// Waivers are the exceptions a guard of pkg/preflight accepts, each
+	// with the reason it exists and the condition that ends it.
+	Waivers []Waiver `yaml:"waivers"`
+}
+
+// Waiver lets one target past one preflight guard. It is an exception, not a
+// setting: it must say why it exists and what ends it, and it may carry the
+// date it stops counting.
+type Waiver struct {
+	// Guard is the guard waived. v1 knows one: GuardSCPOnManagement.
+	Guard string `yaml:"guard"`
+	// Target is what the guard is waived for: an OU or account name, or
+	// "root" for the organization root.
+	Target string `yaml:"target"`
+	// Reason says why the exception exists; required.
+	Reason string `yaml:"reason"`
+	// ExitCondition says what ends it; required.
+	ExitCondition string `yaml:"exit_condition"`
+	// Expires is the last day (YYYY-MM-DD, UTC) the waiver counts; empty
+	// means it lasts until it is removed. The preflight refuses an expired
+	// waiver rather than ignoring it.
+	Expires string `yaml:"expires"`
 }
 
 // Organization identifies the organization. v1 reads it; it never creates,
@@ -95,6 +118,19 @@ type IdentityCenter struct {
 	Groups         []Group         `yaml:"groups"`
 	PermissionSets []PermissionSet `yaml:"permission_sets"`
 	Assignments    []Assignment    `yaml:"assignments"`
+
+	// BreakGlass is the assignment that must reach every account, so that
+	// no plan can take away the last way in. pkg/preflight's lockout guard
+	// refuses a registry without it, or with an account it does not reach.
+	BreakGlass *BreakGlass `yaml:"break_glass"`
+}
+
+// BreakGlass names the principal and permission set of the way back into
+// every account. The assignments that grant it are ordinary Assignments.
+type BreakGlass struct {
+	Principal     string `yaml:"principal"`
+	PrincipalType string `yaml:"principal_type"`
+	PermissionSet string `yaml:"permission_set"`
 }
 
 // Group is an Identity Center group.

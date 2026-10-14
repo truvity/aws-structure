@@ -30,7 +30,7 @@ needed to remove it.
 
 ## Consequences
 
-- Points 1 and 2 are not present yet; the registry refusals (including
-  point 4) are. [safety.md](../safety.md) says which is which.
+- Points 1 and 2 are `pkg/preflight`; point 3 is the engine's default;
+  point 4 is a registry refusal. [safety.md](../safety.md) lists each.
 - Removing an account from the registry leaves a real account behind until
   a person closes it: deliberate, and cheaper than the alternative.

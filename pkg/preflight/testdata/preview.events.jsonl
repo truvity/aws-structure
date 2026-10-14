@@ -1,0 +1,4 @@
+{"sequence":1,"timestamp":1,"preludeEvent":{"config":{}}}
+{"sequence":2,"timestamp":2,"resourcePreEvent":{"metadata":{"op":"replace","urn":"u-account","type":"aws:organizations/account:Account","old":{"type":"aws:organizations/account:Account","urn":"u-account","id":"x","parent":"","provider":"","inputs":{"name":"a"},"outputs":{}},"new":{"type":"aws:organizations/account:Account","urn":"u-account","id":"","parent":"","provider":"","inputs":{"name":"b"},"outputs":{}},"provider":"","detailedDiff":null}}}
+
+{"sequence":3,"timestamp":3,"resourcePreEvent":{"metadata":{"op":"same","urn":"u-ou","type":"aws:organizations/organizationalUnit:OrganizationalUnit","provider":"","detailedDiff":null}}}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"time"
 )
 
 const (
@@ -19,6 +20,15 @@ const (
 	MaxSCPBytes = 5120
 	// MaxInlinePolicyBytes is AWS's cap on a permission set's inline policy.
 	MaxInlinePolicyBytes = 10240
+
+	// GuardSCPOnManagement is the lockout guard on service control policies
+	// attached to the organization root, to the management account or to an
+	// OU above it (pkg/preflight).
+	GuardSCPOnManagement = "scp-on-management"
+	// WaiverTargetRoot is the Waiver.Target of the organization root.
+	WaiverTargetRoot = "root"
+	// DateLayout is the layout of Waiver.Expires.
+	DateLayout = "2006-01-02"
 )
 
 var (
@@ -40,6 +50,8 @@ func (r *Registry) Validate() error {
 	v.scps(r)
 	v.identityCenter(r)
 	v.baseline(r)
+	v.breakGlass(r)
+	v.waivers(r)
 	return errors.Join(v.errs...)
 }
 
@@ -337,5 +349,63 @@ func (v *validator) baseline(r *Registry) {
 	v.unique("boundary", names)
 	for _, bd := range b.Boundaries {
 		v.policyDocument(fmt.Sprintf("boundary %q", bd.Name), bd.Document, MaxInlinePolicyBytes)
+	}
+}
+
+func (v *validator) breakGlass(r *Registry) {
+	bg := r.IdentityCenter.BreakGlass
+	if bg == nil {
+		return
+	}
+	switch bg.PrincipalType {
+	case "group":
+		if !slices.ContainsFunc(r.IdentityCenter.Groups, func(g Group) bool { return g.Name == bg.Principal }) {
+			v.errf("identity_center.break_glass: group %q is not declared", bg.Principal)
+		}
+	case "user":
+		if bg.Principal == "" {
+			v.errf("identity_center.break_glass: empty principal")
+		}
+	default:
+		v.errf("identity_center.break_glass: principal_type %q is not group or user", bg.PrincipalType)
+	}
+	if !slices.ContainsFunc(r.IdentityCenter.PermissionSets, func(p PermissionSet) bool { return p.Name == bg.PermissionSet }) {
+		v.errf("identity_center.break_glass: permission set %q is not declared", bg.PermissionSet)
+	}
+}
+
+func (v *validator) waivers(r *Registry) {
+	targets := map[string]bool{WaiverTargetRoot: true}
+	for _, o := range r.OUs {
+		targets[o.Name] = true
+	}
+	for _, a := range r.Accounts {
+		targets[a.Name] = true
+	}
+	seen := map[string]bool{}
+	for i, w := range r.Waivers {
+		at := fmt.Sprintf("waiver %d (%s %q)", i, w.Guard, w.Target)
+		if w.Guard != GuardSCPOnManagement {
+			v.errf("%s: guard %q is not %q", at, w.Guard, GuardSCPOnManagement)
+		}
+		if !targets[w.Target] {
+			v.errf("%s: target %q is not root or a declared OU or account", at, w.Target)
+		}
+		if key := w.Guard + "/" + w.Target; seen[key] {
+			v.errf("%s: a second waiver for the same guard and target", at)
+		} else {
+			seen[key] = true
+		}
+		if w.Reason == "" {
+			v.errf("%s has no reason", at)
+		}
+		if w.ExitCondition == "" {
+			v.errf("%s has no exit_condition: a waiver must say what ends it", at)
+		}
+		if w.Expires != "" {
+			if _, err := time.Parse(DateLayout, w.Expires); err != nil {
+				v.errf("%s: expires %q is not YYYY-MM-DD", at, w.Expires)
+			}
+		}
 	}
 }

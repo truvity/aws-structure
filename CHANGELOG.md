@@ -5,6 +5,19 @@ them, and for anything breaking, what to do.
 
 ## Unreleased
 
+- **`pkg/preflight`: the guard to run before an apply.** It refuses, all findings at once:
+  - **`irreplaceable`:** a replace (`replace`, `create-replacement`, `delete-replaced`, ...) or a delete of an `Account`, `OrganizationalUnit`, `PermissionSet` or `Organization`.
+  - **`break-glass`:** a registry without `identity_center.break_glass`, or with an account that no assignment of it reaches. Also a plan that deletes or replaces a break-glass `AccountAssignment`, matched by `permissionSetArn` and `principalId`.
+  - **`scp-on-management`:** a service control policy on the root, the management account or an OU above it, in the registry or as a planned `PolicyAttachment`, without a waiver.
+  - **`waiver-expired`:** a waiver past its `expires` day, or one with nothing left to waive.
+
+  `Run(ctx, stack, Opts)` previews an automation-API stack and judges it. `Check(steps, Opts)` takes steps instead, from `StepsFromEvents(ReadEventLog(f))` over a `pulumi preview --event-log` file. `Plan`, `Lockout`, `ProtectedTargets`, `Waived` and `Err` are the parts. New package, additive.
+- **`pkg/registry`: `identity_center.break_glass` and `waivers[]`.**
+  - `break_glass` takes `principal`, `principal_type` (`group` by default) and `permission_set`; both the principal and the permission set must be declared.
+  - A waiver takes `guard` (only `scp-on-management`, `GuardSCPOnManagement`), `target` (an OU or account name, or `root`), `reason` and `exit_condition` (both required) and an optional `expires` date (`YYYY-MM-DD`, `DateLayout`). One waiver per guard and target.
+
+  Both keys are optional for the registry, which stays valid without them. The preflight's lockout guard refuses a registry that has no `break_glass`. Additive.
+
 ## v0.23.0
 
 - **`pkg/engine/guardduty`: adopt the management account's detectors in every region.** New `NewManagement(ctx, logger, ManagementArgs{...})`: one `NewImported` per region of `Regions`, the existing detector ids (`DetectorIDs`, by region) and the topics (`TopicARNs`, by region, as `pkg/alerting` returns them) as inputs. The names are fixed: provider `guardduty-management-provider-<region>`, children `guardduty-management-<region>-{detector,rule,eventbridge-role,eventbridge-policy,target}`, rule `ManagementRuleName(region)` (`guardduty-findings-<region>`), target id `ManagementTargetID`, description `ManagementRuleDescription`. `ManagementArgs.Validate` refuses, all at once, a missing profile, partition or boundary, an empty or repeated region, a region without a detector id or a topic, and a detector id for a region not in `Regions`. Additive.
