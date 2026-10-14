@@ -5,6 +5,16 @@ them, and for anything breaking, what to do.
 
 ## Unreleased
 
+- **`awsorgctl`: the command line.** Nothing it runs writes to AWS. Release archives for linux and darwin (amd64, arm64), or `go install github.com/truvity/aws-structure/cmd/awsorgctl@<tag>`. Commands:
+  - `validate`: load and validate a registry.
+  - `preflight`: `pkg/preflight` over a `pulumi preview --event-log` file and the registry; exits 1 on a refusal. `-break-glass-set`/`-break-glass-principal` turn on the plan half of the break-glass guard.
+  - `drift`: `pkg/drift` against the live organization, with a management profile and the Identity Center region; `-fail` exits 1 on drift.
+  - `access-roles`: the access-roles map, assuming `-role` (default `OrganizationAccountAccessRole`) in each member account.
+  - `aws-ini`: the AWS CLI config of every account with an id, one profile per permission set assigned to it (`<account>@<set>`).
+  - `version`.
+
+  The README no longer calls the engine, preflight, drift and CLI planned.
+
 - **`pkg/appliance`: the EC2 appliance next to `pkg/bootstrap`.** `New(ctx, name, &Args{...})` registers one component (`truvity:aws-structure:Appliance`, or the type you name) with an Auto Scaling group of 1..N and its launch template, an optional warm pool, an `EC2_INSTANCE_LAUNCHING` lifecycle hook (inline on the group, or a resource; `DefaultResult` `ABANDON` unless you set `UnsafeDefaultContinue`), an instance role and profile, a security group (inline, `aws.vpc` or legacy `aws.ec2` rules), the plan's S3 objects, optional CloudWatch alarms and an instance refresh. The image is a name filter, an SSM parameter or an id; IMDSv2 is always required, the hop limit is configurable. The role policy is built from the user-data: `ssm:GetParameter` on exactly the plan's parameters, `s3:GetObject` on exactly its object keys, `autoscaling:CompleteLifecycleAction` and `SetInstanceHealth` on the group, plus your statements; the builders (`BootstrapStatements`, `Document`, `AssumeRolePolicy`) are exported and byte-stable. `Names.Resolve(name).Lifecycle()` gives the plan its lifecycle before it is rendered. For an existing appliance, `Compat` (component type or `Flat`, logical names, aliases, group tag behaviour), `Names` and `IAM.Policy` plus `bootstrap.Verbatim` make step A an empty preview; composed user-data is step B. Refuses, all at once: no user-data, objects without a bucket, a warm pool without a hook, a bare `*` action, a world-open ingress rule without `World`, and more (see docs/reference.md). `Module` and `Contribution` are the extension points for optional modules, which are a later change. New package, additive. Design: docs/decisions/0004-appliance.md.
 - **`pkg/preflight`: the guard to run before an apply.** It refuses, all findings at once:
   - **`irreplaceable`:** a replace (`replace`, `create-replacement`, `delete-replaced`, ...) or a delete of an `Account`, `OrganizationalUnit`, `PermissionSet` or `Organization`.
