@@ -8,8 +8,8 @@
         "ssm:GetParameter"
       ],
       "Resource": [
-        "arn:aws:ssm:eu-west-1:777777777777:parameter/a/a",
-        "arn:aws:ssm:eu-west-1:777777777777:parameter/z/b"
+        "arn:@PARTITION@:ssm:eu-west-1:@ACCOUNT@:parameter/a/a",
+        "arn:@PARTITION@:ssm:eu-west-1:@ACCOUNT@:parameter/z/b"
       ]
     },
     {
@@ -19,8 +19,8 @@
         "s3:GetObject"
       ],
       "Resource": [
-        "arn:aws:s3:::b/p/1.sh",
-        "arn:aws:s3:::b/p/2.sh"
+        "arn:@PARTITION@:s3:::b/p/1.sh",
+        "arn:@PARTITION@:s3:::b/p/2.sh"
       ]
     },
     {
@@ -31,7 +31,7 @@
         "autoscaling:SetInstanceHealth"
       ],
       "Resource": [
-        "arn:aws:autoscaling:eu-west-1:777777777777:autoScalingGroup:*:autoScalingGroupName/g"
+        "arn:@PARTITION@:autoscaling:eu-west-1:@ACCOUNT@:autoScalingGroup:*:autoScalingGroupName/g"
       ]
     },
     {
@@ -41,7 +41,7 @@
         "kms:Decrypt"
       ],
       "Resource": [
-        "arn:aws:kms:eu-west-1:777777777777:key/k"
+        "arn:@PARTITION@:kms:eu-west-1:@ACCOUNT@:key/k"
       ],
       "Condition": {
         "StringEquals": {

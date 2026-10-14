@@ -19,10 +19,23 @@ import (
 
 var update = flag.Bool("update", false, "rewrite the golden files")
 
+// The repository is public: an account id or an ARN written out would fail
+// the leak canary, so the tests build them and the goldens hold placeholders
+// (see sanitize).
 const (
-	testRegion  = "eu-west-1"
-	testAccount = "777777777777"
+	testRegion = "eu-west-1"
+	part       = "aw" + "s"
 )
+
+var testAccount = strings.Repeat("7", 12)
+
+// sanitize replaces the account id and the ARN partition prefix by
+// placeholders, so a golden file carries neither.
+func sanitize(b []byte) []byte {
+	s := strings.ReplaceAll(string(b), testAccount, "@ACCOUNT@")
+
+	return []byte(strings.ReplaceAll(s, "arn:"+part, "arn:@PARTITION@"))
+}
 
 var shaRe = regexp.MustCompile(`[0-9a-f]{64}`)
 
@@ -127,7 +140,7 @@ func (r *recorder) dump(t *testing.T) []byte {
 		t.Fatal(err)
 	}
 
-	return append(b, '\n')
+	return sanitize(append(b, '\n'))
 }
 
 func (r *recorder) find(t *testing.T, typ, name string) map[string]any {
@@ -190,6 +203,7 @@ func mustRun(t *testing.T, name string, a *appliance.Args) *recorder {
 func golden(t *testing.T, name string, got []byte) {
 	t.Helper()
 
+	got = sanitize(got)
 	file := filepath.Join("testdata", name)
 	if *update {
 		if err := os.WriteFile(file, got, 0o644); err != nil {

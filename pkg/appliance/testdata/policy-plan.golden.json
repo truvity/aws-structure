@@ -8,8 +8,8 @@
         "ssm:GetParameter"
       ],
       "Resource": [
-        "arn:aws:ssm:eu-west-1:777777777777:parameter/acme/router/auth",
-        "arn:aws:ssm:eu-west-1:777777777777:parameter/acme/router/key"
+        "arn:@PARTITION@:ssm:eu-west-1:@ACCOUNT@:parameter/acme/router/auth",
+        "arn:@PARTITION@:ssm:eu-west-1:@ACCOUNT@:parameter/acme/router/key"
       ]
     },
     {
@@ -19,7 +19,7 @@
         "s3:GetObject"
       ],
       "Resource": [
-        "arn:aws:s3:::acme-config/router/config/<sha256>.conf"
+        "arn:@PARTITION@:s3:::acme-config/router/config/<sha256>.conf"
       ]
     },
     {
@@ -30,7 +30,7 @@
         "autoscaling:SetInstanceHealth"
       ],
       "Resource": [
-        "arn:aws:autoscaling:eu-west-1:777777777777:autoScalingGroup:*:autoScalingGroupName/router"
+        "arn:@PARTITION@:autoscaling:eu-west-1:@ACCOUNT@:autoScalingGroup:*:autoScalingGroupName/router"
       ]
     }
   ]

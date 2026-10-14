@@ -174,11 +174,11 @@
       "inlinePolicies": [
         {
           "name": "statusbox",
-          "policy": "{\n  \"Statement\": [\n    {\n      \"Action\": [\n        \"ssm:GetParameter\"\n      ],\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"arn:aws:ssm:eu-west-1:777777777777:parameter/acme/status/alerts-read-token\",\n        \"arn:aws:ssm:eu-west-1:777777777777:parameter/acme/status/tunnel-token\"\n      ],\n      \"Sid\": \"ReadOwnParameters\"\n    },\n    {\n      \"Action\": [\n        \"s3:GetObject\",\n        \"s3:PutObject\",\n        \"s3:DeleteObject\"\n      ],\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"arn:aws:s3:::acme-status-replica/box/*\"\n      ],\n      \"Sid\": \"ReplicaObjects\"\n    },\n    {\n      \"Action\": [\n        \"s3:ListBucket\"\n      ],\n      \"Condition\": {\n        \"StringLike\": {\n          \"s3:prefix\": [\n            \"box/*\"\n          ]\n        }\n      },\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"arn:aws:s3:::acme-status-replica\"\n      ],\n      \"Sid\": \"ReplicaList\"\n    },\n    {\n      \"Action\": [\n        \"s3:GetBucketLocation\"\n      ],\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"arn:aws:s3:::acme-status-replica\"\n      ],\n      \"Sid\": \"ReplicaRegion\"\n    },\n    {\n      \"Action\": [\n        \"autoscaling:CompleteLifecycleAction\",\n        \"autoscaling:SetInstanceHealth\"\n      ],\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"arn:aws:autoscaling:eu-west-1:777777777777:autoScalingGroup:*:autoScalingGroupName/statusbox-status\"\n      ],\n      \"Sid\": \"OwnGroup\"\n    }\n  ],\n  \"Version\": \"2012-10-17\"\n}"
+          "policy": "{\n  \"Statement\": [\n    {\n      \"Action\": [\n        \"ssm:GetParameter\"\n      ],\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"arn:@PARTITION@:ssm:eu-west-1:@ACCOUNT@:parameter/acme/status/alerts-read-token\",\n        \"arn:@PARTITION@:ssm:eu-west-1:@ACCOUNT@:parameter/acme/status/tunnel-token\"\n      ],\n      \"Sid\": \"ReadOwnParameters\"\n    },\n    {\n      \"Action\": [\n        \"s3:GetObject\",\n        \"s3:PutObject\",\n        \"s3:DeleteObject\"\n      ],\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"arn:@PARTITION@:s3:::acme-status-replica/box/*\"\n      ],\n      \"Sid\": \"ReplicaObjects\"\n    },\n    {\n      \"Action\": [\n        \"s3:ListBucket\"\n      ],\n      \"Condition\": {\n        \"StringLike\": {\n          \"s3:prefix\": [\n            \"box/*\"\n          ]\n        }\n      },\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"arn:@PARTITION@:s3:::acme-status-replica\"\n      ],\n      \"Sid\": \"ReplicaList\"\n    },\n    {\n      \"Action\": [\n        \"s3:GetBucketLocation\"\n      ],\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"arn:@PARTITION@:s3:::acme-status-replica\"\n      ],\n      \"Sid\": \"ReplicaRegion\"\n    },\n    {\n      \"Action\": [\n        \"autoscaling:CompleteLifecycleAction\",\n        \"autoscaling:SetInstanceHealth\"\n      ],\n      \"Effect\": \"Allow\",\n      \"Resource\": [\n        \"arn:@PARTITION@:autoscaling:eu-west-1:@ACCOUNT@:autoScalingGroup:*:autoScalingGroupName/statusbox-status\"\n      ],\n      \"Sid\": \"OwnGroup\"\n    }\n  ],\n  \"Version\": \"2012-10-17\"\n}"
         }
       ],
       "name": "statusbox-status",
-      "permissionsBoundary": "arn:aws:iam::777777777777:policy/boundary",
+      "permissionsBoundary": "arn:@PARTITION@:iam::@ACCOUNT@:policy/boundary",
       "tags": {
         "Estate": "acme",
         "ManagedBy": "pulumi",
@@ -191,7 +191,7 @@
   },
   {
     "inputs": {
-      "policyArn": "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore",
+      "policyArn": "arn:@PARTITION@:iam::aws:policy/AmazonSSMManagedInstanceCore",
       "role": "statusbox-status"
     },
     "name": "status-ssm-core",
