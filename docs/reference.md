@@ -494,6 +494,12 @@ subscription delivery policy.
 and routes its findings: `<prefix>-detector` (imported, retained),
 `<prefix>-rule`, `<prefix>-eventbridge-role`, `<prefix>-eventbridge-policy`,
 `<prefix>-target`.
+`guardduty.NewManagement` runs `NewImported` for the management account in
+every region it is given, with the detector ids as inputs: provider
+`guardduty-management-provider-<region>`, prefix `guardduty-management-<region>`,
+rule `guardduty-findings-<region>` (`ManagementRuleName`), target id
+`guardduty-management-sns`. It refuses a region without a detector id or a topic,
+and a detector id for a region it was not asked to adopt.
 
 ## `pkg/cost`
 
