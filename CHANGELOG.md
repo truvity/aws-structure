@@ -6,6 +6,18 @@ them, and for anything breaking, what to do.
 ## Unreleased
 
 - **`pkg/appliance`: the EC2 appliance next to `pkg/bootstrap`.** `New(ctx, name, &Args{...})` registers one component (`truvity:aws-structure:Appliance`, or the type you name) with an Auto Scaling group of 1..N and its launch template, an optional warm pool, an `EC2_INSTANCE_LAUNCHING` lifecycle hook (inline on the group, or a resource; `DefaultResult` `ABANDON` unless you set `UnsafeDefaultContinue`), an instance role and profile, a security group (inline, `aws.vpc` or legacy `aws.ec2` rules), the plan's S3 objects, optional CloudWatch alarms and an instance refresh. The image is a name filter, an SSM parameter or an id; IMDSv2 is always required, the hop limit is configurable. The role policy is built from the user-data: `ssm:GetParameter` on exactly the plan's parameters, `s3:GetObject` on exactly its object keys, `autoscaling:CompleteLifecycleAction` and `SetInstanceHealth` on the group, plus your statements; the builders (`BootstrapStatements`, `Document`, `AssumeRolePolicy`) are exported and byte-stable. `Names.Resolve(name).Lifecycle()` gives the plan its lifecycle before it is rendered. For an existing appliance, `Compat` (component type or `Flat`, logical names, aliases, group tag behaviour), `Names` and `IAM.Policy` plus `bootstrap.Verbatim` make step A an empty preview; composed user-data is step B. Refuses, all at once: no user-data, objects without a bucket, a warm pool without a hook, a bare `*` action, a world-open ingress rule without `World`, and more (see docs/reference.md). `Module` and `Contribution` are the extension points for optional modules, which are a later change. New package, additive. Design: docs/decisions/0004-appliance.md.
+- **`pkg/preflight`: the guard to run before an apply.** It refuses, all findings at once:
+  - **`irreplaceable`:** a replace (`replace`, `create-replacement`, `delete-replaced`, ...) or a delete of an `Account`, `OrganizationalUnit`, `PermissionSet` or `Organization`.
+  - **`break-glass`:** a registry without `identity_center.break_glass`, or with an account that no assignment of it reaches. Also a plan that deletes or replaces a break-glass `AccountAssignment`, matched by `permissionSetArn` and `principalId`.
+  - **`scp-on-management`:** a service control policy on the root, the management account or an OU above it, in the registry or as a planned `PolicyAttachment`, without a waiver.
+  - **`waiver-expired`:** a waiver past its `expires` day, or one with nothing left to waive.
+
+  `Run(ctx, stack, Opts)` previews an automation-API stack and judges it. `Check(steps, Opts)` takes steps instead, from `StepsFromEvents(ReadEventLog(f))` over a `pulumi preview --event-log` file. `Plan`, `Lockout`, `ProtectedTargets`, `Waived` and `Err` are the parts. New package, additive.
+- **`pkg/registry`: `identity_center.break_glass` and `waivers[]`.**
+  - `break_glass` takes `principal`, `principal_type` (`group` by default) and `permission_set`; both the principal and the permission set must be declared.
+  - A waiver takes `guard` (only `scp-on-management`, `GuardSCPOnManagement`), `target` (an OU or account name, or `root`), `reason` and `exit_condition` (both required) and an optional `expires` date (`YYYY-MM-DD`, `DateLayout`). One waiver per guard and target.
+
+  Both keys are optional for the registry, which stays valid without them. The preflight's lockout guard refuses a registry that has no `break_glass`. Additive.
 
 ## v0.23.0
 
