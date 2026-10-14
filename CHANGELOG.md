@@ -5,6 +5,8 @@ them, and for anything breaking, what to do.
 
 ## Unreleased
 
+## v0.25.0
+
 - **`awsorgctl`: the command line.** Nothing it runs writes to AWS. Release archives for linux and darwin (amd64, arm64), or `go install github.com/truvity/aws-structure/cmd/awsorgctl@<tag>`. Commands:
   - `validate`: load and validate a registry.
   - `preflight`: `pkg/preflight` over a `pulumi preview --event-log` file and the registry; exits 1 on a refusal. `-break-glass-set`/`-break-glass-principal` turn on the plan half of the break-glass guard.
