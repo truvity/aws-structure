@@ -579,8 +579,7 @@ So a secret is loaded on every boot by default. When the plan has an
 under `RunAuto`, the composer writes three kinds of file inline:
 
 - `/usr/local/lib/bootstrap/secrets.sh`: one `bash -e` block per secret, five
-  attempts each with growing sleeps, then a marker
-  `/var/lib/bootstrap/secrets-loaded` and a `systemctl start --no-block` of
+  attempts each with growing sleeps, then a `systemctl start --no-block` of
   each `UnitFragment` unit.
 - `/etc/systemd/system/bootstrap-secrets.service`: `Type=oneshot`,
   `RemainAfterExit=yes`, `Wants=` and `After=network-online.target`,
@@ -591,13 +590,42 @@ under `RunAuto`, the composer writes three kinds of file inline:
   `After=bootstrap-secrets.service`, so a consumer does not start without its
   secret.
 
-With `Options.Lifecycle`, a failed load tells the Auto Scaling group. On the
-first boot (no marker) it abandons the launch lifecycle action, so the group
-replaces the instance. On a later boot, a warm-pool resume included, there is
-no launch action pending, so it runs `aws autoscaling set-instance-health
---health-status Unhealthy` instead. The instance role needs
-`autoscaling:CompleteLifecycleAction` and `autoscaling:SetInstanceHealth`,
-besides `ssm:GetParameter` on `Rendered.SSMParameters`. The paths above are
+### The lifecycle contract (with `Options.Lifecycle`)
+
+Auto Scaling runs the launch lifecycle hook twice for a warm-pool instance:
+at `Warmed:Pending:Wait` when it launches into the pool, and again at
+`Pending:Wait` when it leaves the pool and starts. An instance launched
+straight into the group has only the second. A plain reboot has neither.
+([Use lifecycle hooks with a warm pool](https://docs.aws.amazon.com/autoscaling/ec2/userguide/warm-pool-instance-lifecycle.html).)
+cloud-init `runcmd` runs once, so the composer reports on every boot from
+systemd units instead:
+
+- **Who completes CONTINUE.** `bootstrap-ready.service` (`ready.sh`), a
+  oneshot generated whenever `Options.Lifecycle` is set, enabled on the first
+  boot and run on every boot. It is `After=` and `Wants=` the secret loader
+  and every unit the plan starts or enables (`Unit{Enable|Start}`,
+  `SSMSecret.Units`, a `UnitFragment` under `RunAuto`), so it runs once their
+  start jobs have finished. **Ready means:** each of those units is
+  `systemctl is-active`. A unit that is not active makes it abandon (below)
+  instead of continuing. Units the caller starts some other way
+  (`RunManual`, a `Step`) are not waited for; the caller orders its own work
+  before, or runs its own `complete-lifecycle-action`.
+- **When.** On every boot where a launch action is pending: the first boot
+  (into the pool or the group) and the resume from the pool. On a boot where
+  none is pending, `complete-lifecycle-action` is refused with "No active
+  Lifecycle Action" and the script treats that as success and does nothing.
+  Any other error is retried three times, then handled as a failure.
+- **Failure.** A secret that cannot be loaded, an inactive unit, or a
+  CONTINUE that cannot be sent runs `complete-lifecycle-action ... ABANDON`
+  and, only if that call is refused (nothing pending), `set-instance-health
+  --health-status Unhealthy`. Either way the group replaces the instance. No
+  marker file decides which. The generated first-boot download and fetch
+  steps ABANDON only (they run only while the first-boot action is pending).
+- **IAM.** The instance role needs `autoscaling:CompleteLifecycleAction`
+  (on its group), `autoscaling:SetInstanceHealth`, and `ssm:GetParameter` on
+  `Rendered.SSMParameters`.
+
+The paths above are
 generated: a `File` at one of them is refused. `SSMSecret.FirstBootOnly` is
 the opt-in to one load in the first-boot steps (no loader, no `Units`). A
 `File` or `Artifact` under `/run` is refused for the same reason; so is a

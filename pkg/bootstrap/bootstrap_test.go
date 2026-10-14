@@ -528,13 +528,16 @@ func TestSecretsLoadOnEveryBoot(t *testing.T) {
 	loader := fileContent(t, doc, "/usr/local/lib/bootstrap/secrets.sh")
 	for _, want := range []string{
 		"aws ssm get-parameter", "--with-decryption", "sleep $((i * 3))",
-		"set-instance-health", "--health-status Unhealthy", // a later boot: no launch action is pending
-		"--lifecycle-action-result ABANDON", // the first boot
-		"/var/lib/bootstrap/secrets-loaded",
+		"--lifecycle-action-result ABANDON", "set-instance-health", "--health-status Unhealthy",
 	} {
 		if !strings.Contains(loader, want) {
 			t.Errorf("loader lacks %q", want)
 		}
+	}
+	// Abandon is tried first and the health call is only its fallback: no marker decides.
+	if ab, hl := strings.Index(loader, "ABANDON"), strings.Index(loader, "set-instance-health"); ab < 0 || hl < ab ||
+		!strings.Contains(loader, "if ! aws autoscaling complete-lifecycle-action") || strings.Contains(loader, "secrets-loaded") {
+		t.Errorf("failure path must try ABANDON, then fall back to unhealthy:\n%s", loader)
 	}
 	unit := fileContent(t, doc, "/etc/systemd/system/bootstrap-secrets.service")
 	for _, want := range []string{
@@ -597,4 +600,97 @@ func mustRender(t *testing.T, p *bootstrap.Plan) *bootstrap.Rendered {
 	must(t, err)
 
 	return r
+}
+
+func TestReadyUnit(t *testing.T) {
+	lc := &bootstrap.Lifecycle{ASGName: "example-asg", HookName: "example-hook"}
+	doc := parse(t, mustRender(t, fullPlan(t, bootstrap.Options{Lifecycle: lc})).CloudConfig)
+	unit := fileContent(t, doc, "/etc/systemd/system/bootstrap-ready.service")
+	for _, want := range []string{
+		"Type=oneshot", "RemainAfterExit=yes", "WantedBy=multi-user.target",
+		"Wants=bootstrap-secrets.service app.service", "After=network-online.target bootstrap-secrets.service app.service",
+	} {
+		if !strings.Contains(unit, want) {
+			t.Errorf("ready unit lacks %q:\n%s", want, unit)
+		}
+	}
+	script := fileContent(t, doc, "/usr/local/lib/bootstrap/ready.sh")
+	for _, want := range []string{
+		"systemctl is-active --quiet 'app.service' || bs_abort", "--lifecycle-action-result CONTINUE",
+		`*"No active Lifecycle Action"*) exit 0`, "bs_abort \"cannot complete the lifecycle action\"",
+	} {
+		if !strings.Contains(script, want) {
+			t.Errorf("ready script lacks %q:\n%s", want, script)
+		}
+	}
+	if !strings.Contains(strings.Join(cmdScripts(doc["runcmd"]), "\n"), "systemctl enable --now bootstrap-ready.service") {
+		t.Error("the first boot must enable and start the ready unit")
+	}
+
+	// No lifecycle, no ready unit.
+	text := mustRender(t, fullPlan(t, bootstrap.Options{})).CloudConfig
+	if strings.Contains(text, "bootstrap-ready") {
+		t.Error("a ready unit without Options.Lifecycle")
+	}
+	// A plan with only a lifecycle still reports ready.
+	p := newPlan(t, bootstrap.Options{Lifecycle: lc})
+	solo := parse(t, mustRender(t, p).CloudConfig)
+	if u := fileContent(t, solo, "/etc/systemd/system/bootstrap-ready.service"); strings.Contains(u, "Wants=") {
+		t.Errorf("an empty plan has nothing to wait for:\n%s", u)
+	}
+	// The unit of a UnitFragment is waited for, too.
+	uf := bootstrap.UnitFragment{Unit: "[Service]\n", UnitPath: "/etc/systemd/system/conn.service", LoadToken: "true\n", Start: "true\n"}
+	q := newPlan(t, bootstrap.Options{Lifecycle: lc})
+	must(t, q.Add(uf.Fragment("conn", bootstrap.RunAuto)))
+	if u := fileContent(t, parse(t, mustRender(t, q).CloudConfig), "/etc/systemd/system/bootstrap-ready.service"); !strings.Contains(u, "conn.service") {
+		t.Errorf("ready unit does not wait for the connector unit:\n%s", u)
+	}
+	// The generated paths are reserved.
+	r := newPlan(t, bootstrap.Options{Lifecycle: lc})
+	must(t, r.AddItems(bootstrap.File{Path: "/usr/local/lib/bootstrap/ready.sh", Content: "x"}))
+	if _, err := r.Render(); err == nil {
+		t.Error("a file at the ready script's path must be refused")
+	}
+}
+
+// TestSystemdVerify gives the generated units and drop-ins a real parser:
+// systemd-analyze verify, over a root that holds the units and stub
+// executables. Skipped without the binary.
+func TestSystemdVerify(t *testing.T) {
+	bin, err := exec.LookPath("systemd-analyze")
+	if err != nil {
+		t.Skip("systemd-analyze not installed")
+	}
+	lc := &bootstrap.Lifecycle{ASGName: "example-asg", HookName: "example-hook"}
+	doc := parse(t, mustRender(t, fullPlan(t, bootstrap.Options{Lifecycle: lc})).CloudConfig)
+	root := t.TempDir()
+	var units []string
+	for _, f := range doc["write_files"].([]any) {
+		m := f.(map[string]any)
+		p := m["path"].(string)
+		full := filepath.Join(root, p)
+		must(t, os.MkdirAll(filepath.Dir(full), 0o755))
+		mode := os.FileMode(0o644)
+		if strings.HasSuffix(p, ".sh") {
+			mode = 0o755
+		}
+		must(t, os.WriteFile(full, []byte(m["content"].(string)), mode))
+		if strings.HasSuffix(p, ".service") {
+			units = append(units, p)
+		}
+	}
+	// The base targets (sysinit.target, network-online.target) come from the host.
+	sys := filepath.Join(root, "usr/lib/systemd")
+	must(t, os.MkdirAll(sys, 0o755))
+	must(t, os.Symlink("/usr/lib/systemd/system", filepath.Join(sys, "system")))
+	stub := filepath.Join(root, "usr/local/bin/app")
+	must(t, os.MkdirAll(filepath.Dir(stub), 0o755))
+	must(t, os.WriteFile(stub, []byte("#!/bin/sh\n"), 0o755))
+	if len(units) != 3 {
+		t.Fatalf("want app, secrets and ready units, got %v", units)
+	}
+	out, err := exec.Command(bin, append([]string{"verify", "--root=" + root}, units...)...).CombinedOutput()
+	if err != nil {
+		t.Errorf("systemd-analyze verify: %v\n%s", err, out)
+	}
 }

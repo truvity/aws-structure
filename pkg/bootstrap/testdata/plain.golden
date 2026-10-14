@@ -61,10 +61,10 @@ write_files:
       }
       export -f imds bs_die
       bs_abort() {
-        echo "bootstrap: $1 failed" >&2
+        echo "bootstrap: $1" >&2
         exit 1
       }
-      bash -e <<'BOOTSTRAP_EOF_0' || bs_abort 'secret /example/app/token'
+      bash -e <<'BOOTSTRAP_EOF_0' || bs_abort 'secret /example/app/token failed'
       param='/example/app/token' dest='/run/app/token.env'
       umask 077
       region="$(imds placement/region)" || bs_die "no region from the instance metadata"
@@ -88,8 +88,6 @@ write_files:
       chown 'app' "$tmp"
       mv -f "$tmp" "$dest"
       BOOTSTRAP_EOF_0
-      install -d -m 0755 '/var/lib/bootstrap'
-      touch '/var/lib/bootstrap/secrets-loaded'
 bootcmd:
   - set -e
   - - bash
