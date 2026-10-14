@@ -53,14 +53,19 @@ limited to 16 KiB.
    has only the second). `runcmd` does not run on that second boot, so
    `bootstrap-ready.service` (generated when `Options.Lifecycle` is set) runs
    on every boot after the secret loader and the plan's units, checks that
-   they are active and sends CONTINUE. "No active Lifecycle Action" (a plain
-   reboot) is a no-op. Failure tries ABANDON first and falls back to
-   `set-instance-health Unhealthy` only if ABANDON is refused. We chose that
+   they are active and sends CONTINUE. Failure (a secret, an inactive unit) tries ABANDON first
+   and falls back to `set-instance-health Unhealthy` only if ABANDON is
+   refused. We chose that
    over reading the IMDS `autoscaling/target-lifecycle-state`, which says
    where the instance is headed but not whether an action is pending, and
    over a marker file, which guesses from history what the API can say
-   directly. The cost is that a refused call is how we learn "nothing
-   pending", so the CONTINUE path depends on the AWS message text.
+   directly. Sending CONTINUE is deliberately not fatal: we do not know the
+   exact text AWS returns when no action is pending, and depending on it would
+   turn a plain reboot into a replaced instance if it ever changed. The script
+   tries three times, logs what AWS said and exits 0. A CONTINUE that was
+   missed on a real action falls to the hook's `DefaultResult`, which must be
+   `ABANDON`, so the instance is replaced only when an action really was
+   pending. An inactive unit stays fatal.
 8. **Verbatim is a separate path.** A consumer adopting the package first
    passes its existing user-data through `Verbatim` (byte-identical output,
    so the plan shows no diff) and moves pieces into fragments one at a time.

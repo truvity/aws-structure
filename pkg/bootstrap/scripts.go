@@ -214,8 +214,10 @@ func (p *Plan) readyUnits() []string {
 }
 
 // readyScript completes the launch lifecycle action with CONTINUE once every
-// unit of the plan is active. No pending action (a plain reboot) is not an
-// error. It runs on every boot from bootstrap-ready.service.
+// unit of the plan is active. Sending it is best effort: a failure (no action
+// pending on a plain reboot, or any other error) is logged and the script
+// exits 0, so a missed CONTINUE on a real action falls to the hook's
+// DefaultResult. It runs on every boot from bootstrap-ready.service.
 func (p *Plan) readyScript() string {
 	l := p.opts.Lifecycle
 	var s strings.Builder
@@ -230,12 +232,11 @@ func (p *Plan) readyScript() string {
     --lifecycle-action-result CONTINUE --instance-id "$(imds instance-id)" 2>&1)"; then
     exit 0
   fi
-  case "$out" in
-    *"No active Lifecycle Action"*) exit 0 ;;
-  esac
+  echo "bootstrap: CONTINUE attempt $i: $out" >&2
   sleep $((i * 3))
 done
-bs_abort "cannot complete the lifecycle action"
+echo "bootstrap: no CONTINUE sent; if an action was pending, the hook's DefaultResult applies" >&2
+exit 0
 `, sq(l.ASGName), sq(l.HookName))
 
 	return s.String()

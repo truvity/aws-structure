@@ -617,11 +617,16 @@ func TestReadyUnit(t *testing.T) {
 	script := fileContent(t, doc, "/usr/local/lib/bootstrap/ready.sh")
 	for _, want := range []string{
 		"systemctl is-active --quiet 'app.service' || bs_abort", "--lifecycle-action-result CONTINUE",
-		`*"No active Lifecycle Action"*) exit 0`, "bs_abort \"cannot complete the lifecycle action\"",
+		`echo "bootstrap: CONTINUE attempt $i: $out" >&2`, "DefaultResult applies",
 	} {
 		if !strings.Contains(script, want) {
 			t.Errorf("ready script lacks %q:\n%s", want, script)
 		}
+	}
+	// A failed CONTINUE is never fatal: no abort after the loop, and the script ends in exit 0.
+	_, tail, _ := strings.Cut(script, "for i in 1 2 3")
+	if strings.Contains(tail, "bs_abort") || strings.Contains(script, "No active Lifecycle Action") || !strings.HasSuffix(tail, "exit 0\n") {
+		t.Errorf("CONTINUE must be logged and never fatal:\n%s", tail)
 	}
 	if !strings.Contains(strings.Join(cmdScripts(doc["runcmd"]), "\n"), "systemctl enable --now bootstrap-ready.service") {
 		t.Error("the first boot must enable and start the ready unit")

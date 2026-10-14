@@ -612,11 +612,14 @@ systemd units instead:
   before, or runs its own `complete-lifecycle-action`.
 - **When.** On every boot where a launch action is pending: the first boot
   (into the pool or the group) and the resume from the pool. On a boot where
-  none is pending, `complete-lifecycle-action` is refused with "No active
-  Lifecycle Action" and the script treats that as success and does nothing.
-  Any other error is retried three times, then handled as a failure.
-- **Failure.** A secret that cannot be loaded, an inactive unit, or a
-  CONTINUE that cannot be sent runs `complete-lifecycle-action ... ABANDON`
+  none is pending, `complete-lifecycle-action` is refused. Sending CONTINUE is
+  best effort: it is tried three times, every error (a missing action
+  included) is only written to the journal with AWS's message, and the script
+  exits 0. The composer does not parse the error text. A missed CONTINUE on a
+  real pending action falls to the hook's `DefaultResult`, so **set the hook's
+  `DefaultResult` to `ABANDON`**: then the instance is replaced only when an
+  action really was pending. (`pkg/appliance` does.)
+- **Failure.** A secret that cannot be loaded or an inactive unit runs `complete-lifecycle-action ... ABANDON`
   and, only if that call is refused (nothing pending), `set-instance-health
   --health-status Unhealthy`. Either way the group replaces the instance. No
   marker file decides which. The generated first-boot download and fetch
