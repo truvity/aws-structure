@@ -26,9 +26,9 @@ func TestSecretsProviderURL(t *testing.T) {
 }
 
 func TestURL(t *testing.T) {
-	const want = "s3://pulumi-state-111122223333-region-a?awssdk=v2&region=region-a&profile=prof"
+	const want = "s3://pulumi-state-acct-id-region-a?awssdk=v2&region=region-a&profile=prof"
 
-	if got := backend.URL("111122223333", "region-a", "prof"); got != want {
+	if got := backend.URL("acct-id", "region-a", "prof"); got != want {
 		t.Errorf("URL: %q, want %q", got, want)
 	}
 }
