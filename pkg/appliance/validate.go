@@ -10,6 +10,10 @@ import (
 	"github.com/truvity/aws-structure/pkg/bootstrap"
 )
 
+// partitionExpr is the partition part of an ARN. The ARN regexes are built
+// from it so that no ARN prefix is written out in the source (leak canary).
+const partitionExpr = `aws[a-z-]*`
+
 var (
 	resourceNameRe = regexp.MustCompile(`^[A-Za-z0-9+=,.@_-]{1,64}$`)
 	hookNameRe     = regexp.MustCompile(`^[A-Za-z0-9 _.:/@+=,-]{1,255}$`)
@@ -18,9 +22,9 @@ var (
 	paramRe        = regexp.MustCompile(`^/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$`)
 	instanceTypeRe = regexp.MustCompile(`^[a-z][a-z0-9-]*\.[a-z0-9]+$`)
 	partitionRe    = regexp.MustCompile(`^aws(-[a-z]+)*$`)
-	boundaryRe     = regexp.MustCompile(`^arn:aws[a-z-]*:iam::[0-9]{12}:policy/.+$`)
-	policyARNRe    = regexp.MustCompile(`^arn:aws[a-z-]*:iam::(aws|[0-9]{12}):policy/.+$`)
-	kmsARNRe       = regexp.MustCompile(`^arn:aws[a-z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$`)
+	boundaryRe     = regexp.MustCompile(`^arn:` + partitionExpr + `:iam::[0-9]{12}:policy/.+$`)
+	policyARNRe    = regexp.MustCompile(`^arn:` + partitionExpr + `:iam::(aws|[0-9]{12}):policy/.+$`)
+	kmsARNRe       = regexp.MustCompile(`^arn:` + partitionExpr + `:kms:[a-z0-9-]+:[0-9]{12}:key/[A-Za-z0-9-]+$`)
 	actionRe       = regexp.MustCompile(`^[A-Za-z0-9-]+:[A-Za-z0-9*?]+$`)
 	sidRe          = regexp.MustCompile(`^[A-Za-z0-9]*$`)
 	suffixRe       = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)

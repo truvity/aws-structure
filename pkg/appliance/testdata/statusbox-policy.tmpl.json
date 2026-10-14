@@ -6,8 +6,8 @@
       ],
       "Effect": "Allow",
       "Resource": [
-        "arn:aws:ssm:REGION:ACCOUNT:parameter/acme/status/alerts-read-token",
-        "arn:aws:ssm:REGION:ACCOUNT:parameter/acme/status/tunnel-token"
+        "arn:PARTITION:ssm:REGION:ACCOUNT:parameter/acme/status/alerts-read-token",
+        "arn:PARTITION:ssm:REGION:ACCOUNT:parameter/acme/status/tunnel-token"
       ],
       "Sid": "ReadOwnParameters"
     },
@@ -19,7 +19,7 @@
       ],
       "Effect": "Allow",
       "Resource": [
-        "arn:aws:s3:::acme-status-replica/box/*"
+        "arn:PARTITION:s3:::acme-status-replica/box/*"
       ],
       "Sid": "ReplicaObjects"
     },
@@ -36,7 +36,7 @@
       },
       "Effect": "Allow",
       "Resource": [
-        "arn:aws:s3:::acme-status-replica"
+        "arn:PARTITION:s3:::acme-status-replica"
       ],
       "Sid": "ReplicaList"
     },
@@ -46,7 +46,7 @@
       ],
       "Effect": "Allow",
       "Resource": [
-        "arn:aws:s3:::acme-status-replica"
+        "arn:PARTITION:s3:::acme-status-replica"
       ],
       "Sid": "ReplicaRegion"
     },
@@ -57,7 +57,7 @@
       ],
       "Effect": "Allow",
       "Resource": [
-        "arn:aws:autoscaling:REGION:ACCOUNT:autoScalingGroup:*:autoScalingGroupName/statusbox-status"
+        "arn:PARTITION:autoscaling:REGION:ACCOUNT:autoScalingGroup:*:autoScalingGroupName/statusbox-status"
       ],
       "Sid": "OwnGroup"
     }

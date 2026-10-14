@@ -81,13 +81,13 @@ func TestPolicyIsExactlyWhatThePlanReads(t *testing.T) {
 
 func TestPolicyBuilderGoldenWithExtras(t *testing.T) {
 	st := appliance.BootstrapStatements(appliance.PolicyInput{
-		Partition: "aws", Region: testRegion, Account: testAccount, Group: "g",
+		Partition: part, Region: testRegion, Account: testAccount, Group: "g",
 		Bucket:        "b",
 		SSMParameters: []string{"/z/b", "/a/a", "/z/b"},
 		ObjectKeys:    []string{"p/2.sh", "p/1.sh"},
 	})
 	st = append(st, appliance.Statement{
-		Sid: "Extra", Action: []string{"kms:Decrypt"}, Resource: []string{"arn:aws:kms:eu-west-1:" + testAccount + ":key/k"},
+		Sid: "Extra", Action: []string{"kms:Decrypt"}, Resource: []string{"arn:" + part + ":kms:eu-west-1:" + testAccount + ":key/k"},
 		Condition: map[string]map[string][]string{"StringEquals": {"kms:ViaService": {"ssm.eu-west-1.amazonaws.com"}}},
 	})
 
@@ -97,7 +97,7 @@ func TestPolicyBuilderGoldenWithExtras(t *testing.T) {
 	}
 
 	golden(t, "policy-builder.golden.json", []byte(doc+"\n"))
-	golden(t, "assume-role.golden.json", []byte(appliance.AssumeRolePolicy("aws")+"\n"))
+	golden(t, "assume-role.golden.json", []byte(appliance.AssumeRolePolicy(part)+"\n"))
 }
 
 func TestNoGroupStatementWithoutAHook(t *testing.T) {
@@ -159,7 +159,7 @@ func TestSeparateHookAndRulesAndAlarms(t *testing.T) {
 	a.Security.Style = appliance.RulesSeparate
 	a.Security.Ingress = []appliance.Rule{{Protocol: "udp", FromPort: 41641, ToPort: 41641, CIDRs: []string{"0.0.0.0/0"}, World: true}}
 	a.Alarms = appliance.AlarmsArgs{
-		ActionARNs: []string{"arn:aws:sns:eu-west-1:" + testAccount + ":alerts"},
+		ActionARNs: []string{"arn:" + part + ":sns:eu-west-1:" + testAccount + ":alerts"},
 		Alarms: []appliance.Alarm{{
 			Suffix: "in-service", Namespace: "AWS/AutoScaling", MetricName: "GroupInServiceInstances", Statistic: "Minimum",
 			Comparison: "LessThanThreshold", Threshold: 1, PeriodSeconds: 60, EvaluationPeriods: 3,

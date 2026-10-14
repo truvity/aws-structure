@@ -21,7 +21,7 @@ import (
 // parent and every input. User-data and object bodies are replaced by
 // placeholders, and every sha256 by <sha256>, because they are the caller's
 // text. testdata/statusbox-policy.tmpl.json is its role policy with
-// REGION and ACCOUNT placeholders.
+// REGION, ACCOUNT and PARTITION placeholders.
 
 const statusPolicy = "testdata/statusbox-policy.tmpl.json"
 
@@ -71,10 +71,11 @@ func statusBoxArgs(t *testing.T, userData *bootstrap.Rendered) *appliance.Args {
 		Refresh:  &appliance.RefreshArgs{},
 		IAM: appliance.IAMArgs{
 			PolicyName:          "statusbox",
-			PermissionsBoundary: "arn:aws:iam::" + testAccount + ":policy/boundary",
-			ManagedPolicyARNs:   []string{"arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"},
+			PermissionsBoundary: "arn:" + part + ":iam::" + testAccount + ":policy/boundary",
+			ManagedPolicyARNs:   []string{"arn:" + part + ":iam::" + part + ":policy/AmazonSSMManagedInstanceCore"},
 			Policy: func(pc appliance.PolicyContext) (string, error) {
 				s := strings.ReplaceAll(string(tmpl), "REGION", pc.Region)
+				s = strings.ReplaceAll(s, "PARTITION", pc.Partition)
 
 				return strings.TrimSpace(strings.ReplaceAll(s, "ACCOUNT", pc.Account)), nil
 			},
