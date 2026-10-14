@@ -1,0 +1,55 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadParameters",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter"
+      ],
+      "Resource": [
+        "arn:aws:ssm:eu-west-1:777777777777:parameter/a/a",
+        "arn:aws:ssm:eu-west-1:777777777777:parameter/z/b"
+      ]
+    },
+    {
+      "Sid": "ReadObjects",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::b/p/1.sh",
+        "arn:aws:s3:::b/p/2.sh"
+      ]
+    },
+    {
+      "Sid": "OwnGroup",
+      "Effect": "Allow",
+      "Action": [
+        "autoscaling:CompleteLifecycleAction",
+        "autoscaling:SetInstanceHealth"
+      ],
+      "Resource": [
+        "arn:aws:autoscaling:eu-west-1:777777777777:autoScalingGroup:*:autoScalingGroupName/g"
+      ]
+    },
+    {
+      "Sid": "Extra",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt"
+      ],
+      "Resource": [
+        "arn:aws:kms:eu-west-1:777777777777:key/k"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": [
+            "ssm.eu-west-1.amazonaws.com"
+          ]
+        }
+      }
+    }
+  ]
+}
