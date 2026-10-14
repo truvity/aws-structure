@@ -65,6 +65,53 @@ Without the automation API, write the events with
 
 `Lockout(reg, now)`, `Plan(steps, PlanOpts)`, `ProtectedTargets(reg)` and
 `Waived(reg, now)` are the parts; `Check` runs both halves.
+## `pkg/drift`
+
+A read-only read of the organization and Identity Center, compared with the
+registry, and the access-roles map. Every AWS call is a List or Describe.
+
+```go
+live, err := drift.Read(ctx, drift.Clients{
+	Organizations: organizations.NewFromConfig(mgmtCfg),
+	SSOAdmin:      ssoadmin.NewFromConfig(idcCfg), // the instance's region
+	IdentityStore: identitystore.NewFromConfig(idcCfg),
+	InstanceARN:   reg.IdentityCenter.InstanceARN,
+	IdentityStoreID: reg.IdentityCenter.IdentityStoreID,
+})
+for _, f := range drift.Compare(reg, live) {
+	fmt.Println(f) // "<kind> <what> <subject>: <detail>"
+}
+```
+
+| Kind | Meaning |
+| --- | --- |
+| `unmanaged` | in AWS, not in the registry: an account, OU, permission set or assignment made by hand, or a service control policy attached while the registry is dormant (AWS's own `FullAWSAccess` excepted) |
+| `missing` | in the registry, not in AWS: an id that is gone, a permission set or assignment not there, or an account or OU without an id not yet created |
+| `moved` | an account or OU under a different parent than declared |
+| `edited` | an OU's name or an account's email differs |
+| `unrecorded-id` | it exists (an OU by name and parent, an account by email), but the registry has no id for it yet |
+| `not-active` | a declared account that is suspended or closed |
+
+Accounts are matched by id, or by email when the registry has none. OUs by id,
+or by name under their parent. Assignments are compared by account, permission
+set, principal type and principal name, and only in managed accounts.
+
+`drift.AccessRoles(ctx, accounts, clientFor)` lists, per account (name to id),
+the roles Identity Center provisioned (`/aws-reserved/sso.amazonaws.com/`,
+`AWSReservedSSO_<set>_<suffix>`) through the IAM client `clientFor` returns for
+that account. `drift.RenderAccessRoles(set, header)` writes them as YAML:
+
+```yaml
+accounts:
+  <account>:
+    account_id: "<id>"
+    roles:
+      <permission set>:
+        permission_set: <permission set>
+        role_name: AWSReservedSSO_<set>_<suffix>
+        role_arn: <the ARN, with its path>
+        role_arn_pathless: <the ARN without the path>
+```
 
 ## `pkg/engine/baseline`
 
