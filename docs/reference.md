@@ -468,6 +468,28 @@ err = backend.NewReplication(ctx, logger, b, res, provider, backend.Replication{
 
 Outputs: `<account>-backend-url`, `<account>-bucket-name`, `<account>-kms-key-arn`.
 
+URLs for a stack's `Pulumi.<stack>.yaml` and `pulumi login`:
+`backend.URL(accountID, region, profile)` is the backend
+(`s3://pulumi-state-<accountID>-<region>?awssdk=v2&region=…&profile=…`), and
+`backend.SecretsProviderURL(region, profile, opts...)` the secrets provider
+(`awskms://alias/pulumi-state?awssdk=v2&region=…&profile=…`).
+`backend.WithContextPurpose(p)` appends `&context_purpose=<p>`, for a key whose
+policy allows Pulumi only with the encryption context `{purpose: <p>}`.
+
+## `pkg/awsprofile`
+
+AWS access by named profile, cached per `awsprofile.Manager` (`NewManager(logger)`):
+
+| Method | Returns |
+| --- | --- |
+| `GetAWSConfig(ctx, profile)` | AWS SDK v2 config, region from the profile |
+| `GetAWSConfigWithRegion(ctx, profile, region)` | AWS SDK v2 config in that region |
+| `GetAccountID(ctx, profile)` | the account id of the profile's credentials (STS) |
+| `GetAWSProvider(ctx, profile)` | Pulumi provider `provider/aws/<profile>`, region from the profile |
+| `GetAWSProviderWithRegion(ctx, profile, region)` | Pulumi provider `provider/aws/<profile>/<region>`, shared by every Manager of the same program run |
+
+The provider names are API: a stack's state holds them.
+
 ## `pkg/dns`
 
 Route 53 zones, delegation and records. Plain resources: the logical names are
