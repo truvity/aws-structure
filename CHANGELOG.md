@@ -5,6 +5,8 @@ them, and for anything breaking, what to do.
 
 ## Unreleased
 
+- **`pkg/engine/guardduty`: adopt the management account's detectors in every region.** New `NewManagement(ctx, logger, ManagementArgs{...})`: one `NewImported` per region of `Regions`, the existing detector ids (`DetectorIDs`, by region) and the topics (`TopicARNs`, by region, as `pkg/alerting` returns them) as inputs. The names are fixed: provider `guardduty-management-provider-<region>`, children `guardduty-management-<region>-{detector,rule,eventbridge-role,eventbridge-policy,target}`, rule `ManagementRuleName(region)` (`guardduty-findings-<region>`), target id `ManagementTargetID`, description `ManagementRuleDescription`. `ManagementArgs.Validate` refuses, all at once, a missing profile, partition or boundary, an empty or repeated region, a region without a detector id or a topic, and a detector id for a region not in `Regions`. Additive.
+
 ## v0.21.1
 
 - **Security: Go toolchain 1.27.2 and `golang.org/x/net` v0.60.0.** Clears the `govulncheck` findings in `golang.org/x/net` v0.58.0 and in the standard library of Go 1.27.1 (`net/http`, `net/http/internal/http2`, `crypto/tls`, `mime/multipart`, `os`). `go.mod` now says `toolchain go1.27.2`; `golang.org/x/sync`, `x/sys`, `x/term` and `x/text` moved up with `x/net`. `golangci-lint` moves to 2.14.0 in `devbox.json` so lint can read the Go 1.27.2 standard library. `devbox` has no `go` 1.27.2 yet, so the dev shell keeps `go@1.27.0` and fetches the toolchain from `go.mod`. No API change.
