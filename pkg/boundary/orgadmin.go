@@ -53,7 +53,10 @@ var orgAdminActions = []string{
 func OrgAdminReadCarveOuts() []string {
 	return []string{
 		"account:GetAccountInformation",
+		"account:GetGovCloudAccountInformation",
+		"account:GetPrimaryEmail",
 		"account:ListRegions",
+		"organizations:DescribeEffectivePolicy",
 		"organizations:DescribeOrganization",
 	}
 }
@@ -131,18 +134,21 @@ func memberOrgDeny() []string {
 		out = append(out, "organizations:"+v+"*")
 	}
 
-	// organizations:Describe*, except DescribeOrganization (but its longer
-	// sibling DescribeOrganizationalUnit is denied).
-	out = append(out, except("organizations:Describe", "O")...)
-	out = append(out, "organizations:DescribeOrganization?*")
+	// organizations:Describe*, except DescribeOrganization and
+	// DescribeEffectivePolicy (their longer siblings, such as
+	// DescribeOrganizationalUnit, are denied).
+	out = append(out, except("organizations:Describe", "OE")...)
+	out = append(out, "organizations:DescribeOrganization?*", "organizations:DescribeEffectivePolicy?*")
 
 	for _, v := range accountVerbs {
 		out = append(out, "account:"+v+"*")
 	}
 
-	// account:Get*, except GetAccountInformation.
-	out = append(out, except("account:Get", "A")...)
-	out = append(out, "account:GetAlternateContact", "account:GetAccountInformation?*")
+	// account:Get*, except GetAccountInformation, GetGovCloudAccountInformation
+	// and GetPrimaryEmail.
+	out = append(out, except("account:Get", "AGP")...)
+	out = append(out, "account:GetAlternateContact", "account:GetAccountInformation?*",
+		"account:GetGovCloudAccountInformation?*", "account:GetPrimaryEmail?*")
 
 	// account:List*, except ListRegions.
 	out = append(out, except("account:List", "R")...)
