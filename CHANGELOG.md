@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.27.0
 
 - **`pkg/boundary`, `pkg/engine/sso`: one admin permission set for the whole organization (opt-in).** Identity Center permission sets are organization-wide and a set's customer-managed boundary is resolved by name in each account, so the boundary of that name may differ per account. `boundary.Spec.OrgAdmin` (`OrgAdminMode`) selects the admin boundary's variant: `OrgAdminManagement` explicitly allows `organizations:*`, `account:*`, `sso:*`, `sso-directory:*` and `identitystore:*` and the editing of the account's boundary policies (making the admin there equivalent to a full administrator, by design) and keeps the rest of the deny list; `OrgAdminMember` denies those actions, carving out the reads PowerUserAccess grants (the six of PowerUserAccess v12, `boundary.OrgAdminReadCarveOuts()`), so a member account's admin keeps what it has today. `sso.OrgAdminActions`, `sso.OrgAdminStatement` and `sso.OrgAdminInlinePolicy(base)` build the matching inline policy for the admin set; the caller decides whether to attach it. The zero value, `OrgAdminOff`, renders every boundary byte for byte as before, so nothing changes unless a caller opts in. `pkg/preflight` needs no waiver for the update. Additive.
 
