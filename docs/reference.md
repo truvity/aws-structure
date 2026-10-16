@@ -672,6 +672,50 @@ retained), `cost-anomaly-monitor-<account>` (when `PerAccountMonitors`) and
 `sso-legacy-assignments-<account>` (children `legacy-assignment-...`).
 `boundary.Policies(boundary.Spec{...})` returns the `registry.Boundary` list in the order admin,
 viewer, default, ACK IAM, CAPA, EKS Auto Mode node, deploy, project, audit.
+
+### One admin permission set for the whole organization
+
+Identity Center permission sets are organization-wide, and the customer-managed boundary a set
+references is resolved BY NAME in each account, so the policy of that name may differ per account.
+`boundary.Spec.OrgAdmin` (`OrgAdminMode`) uses this to make one admin set both the member-account
+admin and the organization administrator in the management account. Opt-in: the zero value
+(`OrgAdminOff`) renders the admin boundary byte for byte as before.
+
+| `Spec.OrgAdmin` | Where | Admin boundary |
+|---|---|---|
+| `OrgAdminOff` (`""`) | any (default) | unchanged |
+| `OrgAdminMember` | every member account | the default plus `DenyOrganizationAdmin`: `organizations:*`, `account:*`, `sso:*`, `sso-directory:*`, `identitystore:*`, with the carve-outs below |
+| `OrgAdminManagement` | the management account | adds `AllowOrganizationAdmin` and `AllowBoundaryPolicyEdit`, drops `DenyBoundaryPolicyEdit`; keeps the rest of the deny list (SSO and service-linked roles, roles and users without a delegated boundary, boundary removal, destructive list, `s3:DeleteBucket` on `pulumi-state-*`) |
+
+In the management account the admin may rewrite the boundary that bounds it, so the admin set there
+is equivalent to a full administrator, by design: it is the organization owner.
+
+`sso.OrgAdminInlinePolicy(base)` returns the set's inline policy with the statement `OrganizationAdmin`
+(`sso.OrgAdminStatement()`, allow `sso.OrgAdminActions()` on `*`) added to `base`; the caller decides
+whether to attach it (`registry.PermissionSet.InlinePolicy`). Nothing attaches it for you.
+
+Effective permission is the identity policy intersected with the boundary (an explicit deny in either
+wins). With the admin set (managed policies PowerUserAccess and IAMFullAccess, plus the inline
+policy above):
+
+| Action | Management account (`OrgAdminManagement`) | Member account (`OrgAdminMember`) |
+|---|---|---|
+| `organizations:*`, `account:*`, `sso:*`, `sso-directory:*`, `identitystore:*` | allowed (inline policy and boundary both allow) | denied by the boundary, except the carve-outs below |
+| edit or delete `pb@*` policies (`iam:CreatePolicyVersion`, `DeletePolicy`, ...) | allowed (no boundary-edit deny; IAMFullAccess allows) | denied (`DenyBoundaryPolicyEdit`) |
+| `iam:*` | allowed, except the deny list: SSO and service-linked roles, roles and users without a delegated boundary, boundary removal | the same, as today |
+
+Carve-outs of the member deny, the reads that PowerUserAccess grants outside its `NotAction`
+(`iam:*`, `organizations:*`, `account:*`), so the member admin keeps them:
+`organizations:DescribeOrganization`, `account:ListRegions`, `account:GetAccountInformation`
+(`boundary.OrgAdminReadCarveOuts()`). Because IAM cannot deny a service except named actions, the
+deny lists action patterns built from AWS's verbs (`organizations:Create*`, ...); an action AWS adds
+under a verb the list lacks is not denied until the list gets it. PowerUserAccess also allows
+`sso:*`, `sso-directory:*` and `identitystore:*` (they are not in its `NotAction`); the member deny
+removes those too. A member account that is a delegated administrator for Identity Center must not
+use `OrgAdminMember`.
+
+`pkg/preflight` has no guard on a boundary policy or an inline policy: both are in-place updates, so a
+management-variant update needs no waiver. Replacing a permission set is still refused.
 ## `pkg/fleet`
 
 `fleet.Fleet{...}` with `Providers(ctx, prefix, regions)` (`<prefix>-<account>-<region>`),

@@ -39,6 +39,10 @@ type Spec struct {
 	// Hierarchy lists who may delegate to whom. Required: it must contain
 	// Names.Admin, Names.Deploy and Names.ACKIAM.
 	Hierarchy []Entry
+	// OrgAdmin selects the variant of the admin boundary. The zero value
+	// (OrgAdminOff) is the admin boundary every existing caller gets. See
+	// OrgAdminMode.
+	OrgAdmin OrgAdminMode
 }
 
 // Validate reports every problem with s at once, or returns nil.
@@ -324,9 +328,16 @@ func marshal(name string, d document) (string, error) {
 }
 
 func (s *Spec) admin() (string, error) {
-	return marshal(s.Names.Admin, document{Version: policyVersion, Statement: []statement{
+	stmts := []statement{
 		allowAll(),
-		{
+	}
+
+	if s.OrgAdmin == OrgAdminManagement {
+		stmts = append(stmts, s.allowOrgAdmin(), s.allowBoundaryEdit())
+	}
+
+	stmts = append(stmts,
+		statement{
 			Sid:    "DenyChangePermissionsSetsRoles",
 			Effect: deny,
 			Action: []string{
@@ -340,14 +351,26 @@ func (s *Spec) admin() (string, error) {
 			},
 		},
 		denyWithoutBoundary("DenyCreateOrChangeWithoutBoundary", s.DelegateARNs(s.Names.Admin)),
-		s.denyBoundaryEdit(),
+	)
+
+	if s.OrgAdmin != OrgAdminManagement {
+		stmts = append(stmts, s.denyBoundaryEdit())
+	}
+
+	stmts = append(stmts,
 		noBoundaryDelete(),
-		{Sid: "DenyDestructiveActions", Effect: deny, Action: destructiveActions, Resource: "*"},
-		{
+		statement{Sid: "DenyDestructiveActions", Effect: deny, Action: destructiveActions, Resource: "*"},
+		statement{
 			Sid: "DenyDeletePulumiStateBuckets", Effect: deny, Action: "s3:DeleteBucket",
 			Resource: fmt.Sprintf("arn:%s:s3:::pulumi-state-*", s.Partition),
 		},
-	}})
+	)
+
+	if s.OrgAdmin == OrgAdminMember {
+		stmts = append(stmts, denyOrgAdmin())
+	}
+
+	return marshal(s.Names.Admin, document{Version: policyVersion, Statement: stmts})
 }
 
 func (s *Spec) viewer() (string, error) {
