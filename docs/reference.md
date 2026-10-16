@@ -17,7 +17,7 @@ error. Types are in `pkg/registry/types.go`; refusals in
 | --- | --- |
 | `organization` | `id` (`o-...`), `root_id` (`r-...`), `management_account` (an account name). `manage: true` is refused in v1 |
 | `ous[]` | `name`, `parent` (empty is the root), `id` (adopted OU), `scps[]`, `reason` (required) |
-| `accounts[]` | `name`, `id` (12 digits, once it exists), `email`, `ou` (required; `root` for an account directly under the organization root), `scps[]`, `tags`, `baseline_exempt` (a reason), `closed` (a note: the account was closed and AWS keeps it SUSPENDED until it is purged) |
+| `accounts[]` | `name`, `id` (12 digits, once it exists), `email`, `ou` (required; `root` for an account directly under the organization root), `scps[]`, `tags`, `baseline_exempt` (a reason), `closed` (true: the account was closed and AWS keeps it SUSPENDED until it is purged) |
 | `scp_enforcement` | `dormant` (default); `enforced` is refused in v1 |
 | `scps[]` | `name`, `description`, `document` (JSON, at most 5120 bytes) |
 | `identity_center` | `instance_arn`, `identity_store_id`, `groups[]`, `permission_sets[]`, `assignments[]`, `break_glass` |

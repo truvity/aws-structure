@@ -72,7 +72,7 @@ func TestLockoutBreakGlass(t *testing.T) {
 
 func TestLockoutIgnoresClosedAccounts(t *testing.T) {
 	r := reg()
-	r.Accounts = append(r.Accounts, registry.Account{Name: "old", ID: "acct-old", OU: "workloads", Closed: "closed 2026-09"})
+	r.Accounts = append(r.Accounts, registry.Account{Name: "old", ID: "acct-old", OU: "workloads", Closed: true})
 	r.IdentityCenter.Assignments = r.IdentityCenter.Assignments[1:2] // only mgmt; app, data and old unreached
 
 	if got := guards(preflight.Lockout(r, now)); got != "break-glass=app;break-glass=data;" {

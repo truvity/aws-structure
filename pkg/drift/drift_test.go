@@ -276,7 +276,7 @@ func TestCompareClosedAccount(t *testing.T) {
 		SCPEnforcement: registry.SCPDormant,
 		Accounts: []registry.Account{
 			{Name: "mgmt", ID: "acct-mgmt", Email: "mgmt@example.test", OU: registry.OURoot},
-			{Name: "old", ID: "acct-old", Email: "old@example.test", OU: registry.OURoot, Closed: "closed"},
+			{Name: "old", ID: "acct-old", Email: "old@example.test", OU: registry.OURoot, Closed: true},
 		},
 		IdentityCenter: registry.IdentityCenter{
 			PermissionSets: []registry.PermissionSet{{Name: "admin"}},
@@ -305,7 +305,7 @@ func TestCompareClosedAccount(t *testing.T) {
 		t.Fatalf("a closed account that came back is not reported: %v", got)
 	}
 
-	r.Accounts[1].Closed = ""
+	r.Accounts[1].Closed = false
 	live.Accounts[1].State = "SUSPENDED"
 
 	got = drift.Compare(r, live)
