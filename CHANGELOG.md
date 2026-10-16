@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.26.0
 
 - **`pkg/engine/sso`: `DeployBreakGlass`, break-glass added beside the normal grants.** A scope matrix built into `DeployAssignments` can only replace the set on an account, so it could not add the registry's `identity_center.break_glass` alongside it. `DeployBreakGlass(ctx, logger, BreakGlassArgs)` declares one `AccountAssignment` of that principal and permission set (ids and ARNs are inputs) on every account that is not `closed` and has an id, including accounts directly under the organization root, as one `AccountAssignments` component `sso-break-glass-<account>` per account; `Names`, `LegacyTopLevel` and `LegacyNames` keep URNs stable. `Skip(account)` leaves out the accounts the caller's own assignments already grant it on. Also `Registry.BreakGlassTargets()`, and in `pkg/preflight` `LockoutWith`, `BreakGlassBuilder` and `Opts.BreakGlassBuilder`, so the registry guard counts the builder's accounts as reached (`Lockout` is unchanged). Additive.
 - **`pkg/registry`: an account may sit directly under the organization root.** `Account.OU` takes `registry.OURoot` (`root`), as the management account of an organization usually does; before, every account had to name a declared OU, so a registry could not describe such an organization without the drift check reporting that account as `unmanaged`. No OU may be named `root`. `pkg/drift` compares an account at `root` with the live root. Additive.
