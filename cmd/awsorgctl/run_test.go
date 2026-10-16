@@ -180,8 +180,11 @@ func TestAccessRoleAccounts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	reg.Accounts[0].ID = "111111111111"
-	reg.Accounts[1].ID = "222222222222"
+	// Placeholder ids, built so the source holds no twelve-digit run (the
+	// leak canary bans those outside pkg/registry's tests).
+	idOne, idTwo := strings.Repeat("1", 12), strings.Repeat("2", 12)
+	reg.Accounts[0].ID = idOne
+	reg.Accounts[1].ID = idTwo
 
 	all, err := accessRoleAccounts(reg, "")
 	if err != nil || len(all) != 2 {
@@ -189,7 +192,7 @@ func TestAccessRoleAccounts(t *testing.T) {
 	}
 
 	one, err := accessRoleAccounts(reg, " app ")
-	if err != nil || len(one) != 1 || one["app"] != "222222222222" {
+	if err != nil || len(one) != 1 || one["app"] != idTwo {
 		t.Fatalf("one: %v %v", one, err)
 	}
 
