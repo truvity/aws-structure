@@ -173,3 +173,41 @@ func TestLiveCommandsNeedTheirFlags(t *testing.T) {
 		t.Fatalf("access-roles: %d %s", code, out)
 	}
 }
+
+func TestAccessRoleAccounts(t *testing.T) {
+	reg, err := registry.Parse([]byte(registryYAML))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	reg.Accounts[0].ID = "111111111111"
+	reg.Accounts[1].ID = "222222222222"
+
+	all, err := accessRoleAccounts(reg, "")
+	if err != nil || len(all) != 2 {
+		t.Fatalf("all: %v %v", all, err)
+	}
+
+	one, err := accessRoleAccounts(reg, " app ")
+	if err != nil || len(one) != 1 || one["app"] != "222222222222" {
+		t.Fatalf("one: %v %v", one, err)
+	}
+
+	reg.Accounts[1].Closed = true
+
+	rest, err := accessRoleAccounts(reg, "")
+	if err != nil || len(rest) != 1 || rest["mgmt"] == "" {
+		t.Fatalf("a closed account is skipped by default: %v %v", rest, err)
+	}
+
+	for _, only := range []string{"ghost", "app"} {
+		if _, err := accessRoleAccounts(reg, only); err == nil {
+			t.Fatalf("-accounts %s accepted", only)
+		}
+	}
+
+	reg.Accounts[0].ID = ""
+	if _, err := accessRoleAccounts(reg, "mgmt"); err == nil {
+		t.Fatal("an account without an id accepted")
+	}
+}
