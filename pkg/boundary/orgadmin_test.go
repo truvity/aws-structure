@@ -314,7 +314,10 @@ func TestMemberDenyFitsTheBoundarySize(t *testing.T) {
 func TestPulumiStateBucketsStayProtectedInBothVariants(t *testing.T) {
 	for _, mode := range []boundary.OrgAdminMode{boundary.OrgAdminMember, boundary.OrgAdminManagement} {
 		doc := adminDoc(t, mode)
-		for _, frag := range []string{`"s3:DeleteBucket"`, "arn:part:s3:::pulumi-state-*", `"cloudtrail:DeleteTrail"`, "role/AWSServiceRoleFor*", "aws-reserved/sso.amazonaws.com"} {
+		for _, frag := range []string{
+			`"s3:DeleteBucket"`, "arn:part:s3:::pulumi-state-*", `"cloudtrail:DeleteTrail"`,
+			"role/AWSServiceRoleFor*", "aws-reserved/sso.amazonaws.com",
+		} {
 			if !strings.Contains(doc, frag) {
 				t.Errorf("mode %q lost %s", mode, frag)
 			}

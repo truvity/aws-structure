@@ -291,7 +291,8 @@ func TestPlanBoundaryAndInlinePolicyUpdatesNeedNoWaiver(t *testing.T) {
 		t.Fatalf("refused: %v", fs)
 	}
 
-	if got := guards(preflight.Plan([]preflight.Step{{Op: "replace", URN: "u-ps", Type: preflight.TypePermissionSet}}, preflight.PlanOpts{})); got != "irreplaceable=u-ps;" {
+	replace := []preflight.Step{{Op: "replace", URN: "u-ps", Type: preflight.TypePermissionSet}}
+	if got := guards(preflight.Plan(replace, preflight.PlanOpts{})); got != "irreplaceable=u-ps;" {
 		t.Fatalf("permission set replace: %s", got)
 	}
 }

@@ -36,7 +36,8 @@ func TestOrgAdminInlinePolicyFromNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	want := `{"Statement":[{"Action":["organizations:*","account:*","sso:*","sso-directory:*","identitystore:*"],"Effect":"Allow","Resource":"*","Sid":"OrganizationAdmin"}],"Version":"2012-10-17"}`
+	want := `{"Statement":[{"Action":["organizations:*","account:*","sso:*","sso-directory:*","identitystore:*"],` +
+		`"Effect":"Allow","Resource":"*","Sid":"OrganizationAdmin"}],"Version":"2012-10-17"}`
 	if got != want {
 		t.Errorf("got %s", got)
 	}
