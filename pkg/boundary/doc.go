@@ -20,6 +20,11 @@
 //   - CAPA and EKSAutoNode: infrastructure provisioners; CAPA may pass roles
 //     and create service-linked roles, EKS Auto Mode's roles are allow-all.
 //
+// Spec.OrgAdmin (OrgAdminMode) selects, opt-in, a variant of the admin
+// boundary for an organization that uses one admin permission set everywhere:
+// OrgAdminManagement for the management account, OrgAdminMember for every
+// member account. The zero value changes nothing. See OrgAdminMode.
+//
 // Who may delegate to whom comes from the caller's hierarchy (Entry); the
 // package adds nothing but the one special case that the admin boundary
 // delegates to itself and to every boundary of a class by wildcard (the

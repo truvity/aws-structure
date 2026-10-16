@@ -273,3 +273,25 @@ func TestLockoutBreakGlassThroughBuilder(t *testing.T) {
 		t.Fatalf("skipped account covered by the registry still refused: %v", fs)
 	}
 }
+
+// Changing a boundary policy or a permission set's inline policy is an update
+// in place; neither is guarded, so the management-account admin boundary
+// (pkg/boundary.OrgAdminManagement) and the organization-admin inline policy
+// (pkg/engine/sso.OrgAdminInlinePolicy) need no waiver. Replacing the
+// permission set itself is still refused.
+func TestPlanBoundaryAndInlinePolicyUpdatesNeedNoWaiver(t *testing.T) {
+	steps := []preflight.Step{
+		{Op: "update", URN: "u-boundary", Type: "aws:iam/policy:Policy"},
+		{Op: "replace", URN: "u-boundary-2", Type: "aws:iam/policy:Policy"},
+		{Op: "update", URN: "u-inline", Type: "aws:ssoadmin/permissionSetInlinePolicy:PermissionSetInlinePolicy"},
+		{Op: "create", URN: "u-attach", Type: "aws:ssoadmin/permissionsBoundaryAttachment:PermissionsBoundaryAttachment"},
+	}
+
+	if fs := preflight.Plan(steps, preflight.PlanOpts{}); len(fs) != 0 {
+		t.Fatalf("refused: %v", fs)
+	}
+
+	if got := guards(preflight.Plan([]preflight.Step{{Op: "replace", URN: "u-ps", Type: preflight.TypePermissionSet}}, preflight.PlanOpts{})); got != "irreplaceable=u-ps;" {
+		t.Fatalf("permission set replace: %s", got)
+	}
+}
