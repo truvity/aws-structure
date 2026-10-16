@@ -704,9 +704,10 @@ policy above):
 | edit or delete `pb@*` policies (`iam:CreatePolicyVersion`, `DeletePolicy`, ...) | allowed (no boundary-edit deny; IAMFullAccess allows) | denied (`DenyBoundaryPolicyEdit`) |
 | `iam:*` | allowed, except the deny list: SSO and service-linked roles, roles and users without a delegated boundary, boundary removal | the same, as today |
 
-Carve-outs of the member deny, the reads that PowerUserAccess grants outside its `NotAction`
+Carve-outs of the member deny, the reads that PowerUserAccess (v12) grants outside its `NotAction`
 (`iam:*`, `organizations:*`, `account:*`), so the member admin keeps them:
-`organizations:DescribeOrganization`, `account:ListRegions`, `account:GetAccountInformation`
+`account:GetAccountInformation`, `account:GetGovCloudAccountInformation`, `account:GetPrimaryEmail`,
+`account:ListRegions`, `organizations:DescribeEffectivePolicy`, `organizations:DescribeOrganization`
 (`boundary.OrgAdminReadCarveOuts()`). Because IAM cannot deny a service except named actions, the
 deny lists action patterns built from AWS's verbs (`organizations:Create*`, ...); an action AWS adds
 under a verb the list lacks is not denied until the list gets it. PowerUserAccess also allows

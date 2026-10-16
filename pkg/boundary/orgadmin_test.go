@@ -257,11 +257,13 @@ func memberDeny(t *testing.T) []string {
 	return nil
 }
 
-// The carve-outs are the reads PowerUserAccess grants outside its NotAction:
-// organizations:DescribeOrganization, account:ListRegions and
-// account:GetAccountInformation.
+// The carve-outs are the six reads PowerUserAccess (v12) grants outside its
+// NotAction.
 func TestMemberDenyCarveOuts(t *testing.T) {
-	want := []string{"account:GetAccountInformation", "account:ListRegions", "organizations:DescribeOrganization"}
+	want := []string{
+		"account:GetAccountInformation", "account:GetGovCloudAccountInformation", "account:GetPrimaryEmail",
+		"account:ListRegions", "organizations:DescribeEffectivePolicy", "organizations:DescribeOrganization",
+	}
 	if got := boundary.OrgAdminReadCarveOuts(); !slices.Equal(got, want) {
 		t.Fatalf("carve-outs = %v", got)
 	}
@@ -282,14 +284,14 @@ func TestMemberDenyCoversTheAdminActions(t *testing.T) {
 		// organizations
 		"organizations:CreateAccount", "organizations:CloseAccount", "organizations:AttachPolicy",
 		"organizations:ListAccounts", "organizations:ListRoots", "organizations:DescribeAccount",
-		"organizations:DescribePolicy", "organizations:DescribeOrganizationalUnit",
+		"organizations:DescribePolicy", "organizations:DescribeOrganizationalUnit", "organizations:DescribeEffectivePolicyX",
 		"organizations:DescribeHandshake", "organizations:EnableAWSServiceAccess", "organizations:MoveAccount",
 		"organizations:InviteAccountToOrganization", "organizations:LeaveOrganization",
 		"organizations:DeleteOrganization", "organizations:UpdatePolicy", "organizations:TagResource",
 		"organizations:RegisterDelegatedAdministrator", "organizations:DeregisterDelegatedAdministrator",
 		// account
 		"account:CloseAccount", "account:PutAlternateContact", "account:GetAlternateContact",
-		"account:GetContactInformation", "account:GetPrimaryEmail", "account:EnableRegion",
+		"account:GetContactInformation", "account:GetRegionOptStatus", "account:EnableRegion",
 		"account:DisableRegion", "account:StartPrimaryEmailUpdate", "account:AcceptPrimaryEmailUpdate",
 		"account:PutAccountName", "account:ListAccountPolicies",
 		// Identity Center and its directory
