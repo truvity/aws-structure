@@ -27,6 +27,10 @@ const (
 	GuardSCPOnManagement = "scp-on-management"
 	// WaiverTargetRoot is the Waiver.Target of the organization root.
 	WaiverTargetRoot = "root"
+	// OURoot is the Account.OU of an account that sits directly under the
+	// organization root, as the management account of an organization
+	// usually does. No OU may be named OURoot.
+	OURoot = "root"
 	// DateLayout is the layout of Waiver.Expires.
 	DateLayout = "2006-01-02"
 )
@@ -102,6 +106,9 @@ func (v *validator) ous(r *Registry) {
 	set := v.unique("ou", names)
 	parent := map[string]string{}
 	for _, o := range r.OUs {
+		if o.Name == OURoot {
+			v.errf("ou %q: the name is reserved for the organization root (Account.OU %q)", o.Name, OURoot)
+		}
 		if o.Reason == "" {
 			v.errf("ou %q has no reason", o.Name)
 		}
@@ -149,7 +156,7 @@ func (v *validator) accounts(r *Registry) {
 		switch {
 		case a.OU == "":
 			v.errf("account %q has no ou: every account sits in an OU", a.Name)
-		case !ous[a.OU]:
+		case a.OU != OURoot && !ous[a.OU]:
 			v.errf("account %q: ou %q is not a declared OU", a.Name, a.OU)
 		}
 		if a.ID != "" {

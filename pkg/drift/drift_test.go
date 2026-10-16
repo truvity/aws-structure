@@ -246,3 +246,70 @@ func TestAccessRoles(t *testing.T) {
 		t.Fatalf("render:\n%s", text)
 	}
 }
+
+func TestCompareAccountAtTheRoot(t *testing.T) {
+	r := &registry.Registry{
+		Organization:   registry.Organization{RootID: "r-1", ManagementAccount: "mgmt"},
+		SCPEnforcement: registry.SCPDormant,
+		Accounts:       []registry.Account{{Name: "mgmt", ID: "acct-mgmt", Email: "mgmt@example.test", OU: registry.OURoot}},
+	}
+	live := &drift.Live{
+		RootID:   "r-1",
+		Accounts: []drift.LiveAccount{{ID: "acct-mgmt", Name: "mgmt", Email: "mgmt@example.test", ParentID: "r-1", State: "ACTIVE"}},
+	}
+
+	if got := drift.Compare(r, live); len(got) != 0 {
+		t.Fatalf("an account at the root drifts: %v", got)
+	}
+
+	live.Accounts[0].ParentID = "ou-x"
+
+	got := drift.Compare(r, live)
+	if len(got) != 1 || got[0].Kind != drift.KindMoved {
+		t.Fatalf("an account moved off the root: %v", got)
+	}
+}
+
+func TestCompareClosedAccount(t *testing.T) {
+	r := &registry.Registry{
+		Organization:   registry.Organization{RootID: "r-1", ManagementAccount: "mgmt"},
+		SCPEnforcement: registry.SCPDormant,
+		Accounts: []registry.Account{
+			{Name: "mgmt", ID: "acct-mgmt", Email: "mgmt@example.test", OU: registry.OURoot},
+			{Name: "old", ID: "acct-old", Email: "old@example.test", OU: registry.OURoot, Closed: "closed"},
+		},
+		IdentityCenter: registry.IdentityCenter{
+			PermissionSets: []registry.PermissionSet{{Name: "admin"}},
+			Assignments:    []registry.Assignment{{Principal: "admins", PrincipalType: "group", PermissionSet: "admin", Accounts: []string{"mgmt", "old"}}},
+		},
+	}
+	live := &drift.Live{
+		RootID: "r-1",
+		Accounts: []drift.LiveAccount{
+			{ID: "acct-mgmt", Name: "mgmt", Email: "mgmt@example.test", ParentID: "r-1", State: "ACTIVE"},
+			{ID: "acct-old", Name: "old", Email: "old@example.test", ParentID: "r-1", State: "SUSPENDED"},
+		},
+		PermissionSets: map[string]string{"arn-admin": "admin"},
+		Groups:         map[string]string{"g-1": "admins"},
+		Assignments:    []drift.LiveAssignment{{AccountID: "acct-mgmt", PermissionSetARN: "arn-admin", PrincipalType: "GROUP", PrincipalID: "g-1"}},
+	}
+
+	if got := drift.Compare(r, live); len(got) != 0 {
+		t.Fatalf("a closed account that is closed drifts: %v", got)
+	}
+
+	live.Accounts[1].State = "ACTIVE"
+
+	got := drift.Compare(r, live)
+	if len(got) != 1 || got[0].Kind != drift.KindEdited {
+		t.Fatalf("a closed account that came back is not reported: %v", got)
+	}
+
+	r.Accounts[1].Closed = ""
+	live.Accounts[1].State = "SUSPENDED"
+
+	got = drift.Compare(r, live)
+	if len(got) < 1 || got[0].Kind != drift.KindNotActive {
+		t.Fatalf("an account that is not active and not declared closed: %v", got)
+	}
+}
