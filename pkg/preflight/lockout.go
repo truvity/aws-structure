@@ -96,7 +96,7 @@ func breakGlassReach(reg *registry.Registry) []Finding {
 	var out []Finding
 
 	for _, acct := range reg.Accounts {
-		if reached[acct.Name] {
+		if reached[acct.Name] || acct.Closed != "" {
 			continue
 		}
 

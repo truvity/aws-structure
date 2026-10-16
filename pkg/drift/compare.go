@@ -46,7 +46,11 @@ func (f Finding) String() string {
 // Compare returns every difference between the registry and what Read found,
 // sorted.
 func Compare(reg *registry.Registry, live *Live) []Finding {
-	c := &comparer{reg: reg, live: live, ouID: map[string]string{}, acctID: map[string]string{}}
+	c := &comparer{reg: reg, live: live, ouID: map[string]string{}, acctID: map[string]string{}, closed: map[string]bool{}}
+	for _, a := range reg.Accounts {
+		c.closed[a.Name] = a.Closed != ""
+	}
+
 	c.ous()
 	c.accounts()
 	c.policies()
@@ -75,6 +79,8 @@ type comparer struct {
 	out  []Finding
 	// ouID and acctID map registry names to the live ids they matched.
 	ouID, acctID map[string]string
+	// closed holds the names of the accounts the registry declares closed.
+	closed map[string]bool
 }
 
 func (c *comparer) add(kind, what, subject, detail string) {
@@ -83,7 +89,7 @@ func (c *comparer) add(kind, what, subject, detail string) {
 
 // parentID is the live id of a registry parent name ("" is the root).
 func (c *comparer) parentID(name string) string {
-	if name == "" {
+	if name == "" || name == registry.OURoot {
 		return c.live.RootID
 	}
 
@@ -216,7 +222,12 @@ func (c *comparer) accounts() {
 			c.add(KindMoved, "account", a.Name, fmt.Sprintf("parent %s, declared %s (%s)", l.ParentID, a.OU, want))
 		}
 
-		if l.State != "" && l.State != "ACTIVE" {
+		active := l.State == "" || l.State == "ACTIVE"
+
+		switch {
+		case a.Closed != "" && active:
+			c.add(KindEdited, "account", a.Name, "declared closed ("+a.Closed+"), active in AWS")
+		case a.Closed == "" && !active:
 			c.add(KindNotActive, "account", a.Name, l.State)
 		}
 	}
@@ -304,6 +315,10 @@ func (c *comparer) assignments() {
 		}
 
 		for _, acct := range targets {
+			if c.closed[acct] {
+				continue // a closed account grants nothing
+			}
+
 			if _, ok := c.acctID[acct]; ok {
 				want[assignmentKey(acct, a.PermissionSet, a.PrincipalType, a.Principal)] = true
 			}

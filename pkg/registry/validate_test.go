@@ -25,6 +25,7 @@ func TestValidateRefusals(t *testing.T) {
 		{"organization managed", "management_account: mgmt", "management_account: mgmt\n  manage: true", "lookup-only"},
 		{"bad organization id", "o-abcde12345", "org-1", "organization id"},
 		{"unknown management account", "management_account: mgmt", "management_account: ghost", "not a declared account"},
+		{"ou named like the root", "  - name: workloads\n    parent: platform", "  - name: root\n    parent: platform", "reserved for the organization root"},
 		{"duplicate ou", "  - name: workloads\n    parent: platform", "  - name: platform\n    parent: platform", "duplicate ou"},
 		{"ou without reason", "    reason: workload accounts", "", "no reason"},
 		{"ou unknown parent", "parent: platform", "parent: ghost", "not a declared OU"},
@@ -106,5 +107,16 @@ func TestDiamondIncludeIsNotACycle(t *testing.T) {
 		"    - name: left\n      includes: [base]\n    - name: right\n      includes: [base]\n    - name: admin\n      includes: [left, right]", 1)
 	if _, err := registry.Parse([]byte(doc)); err != nil {
 		t.Fatalf("a diamond is not a cycle: %v", err)
+	}
+}
+
+func TestAccountAtTheRoot(t *testing.T) {
+	r, err := registry.Parse([]byte(strings.Replace(valid, "    ou: platform", "    ou: root", 1)))
+	if err != nil {
+		t.Fatalf("an account at the organization root is refused: %v", err)
+	}
+
+	if r.Accounts[0].OU != registry.OURoot {
+		t.Fatalf("first account sits in %q, want %q", r.Accounts[0].OU, registry.OURoot)
 	}
 }

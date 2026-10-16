@@ -70,6 +70,16 @@ func TestLockoutBreakGlass(t *testing.T) {
 	}
 }
 
+func TestLockoutIgnoresClosedAccounts(t *testing.T) {
+	r := reg()
+	r.Accounts = append(r.Accounts, registry.Account{Name: "old", ID: "acct-old", OU: "workloads", Closed: "closed 2026-09"})
+	r.IdentityCenter.Assignments = r.IdentityCenter.Assignments[1:2] // only mgmt; app, data and old unreached
+
+	if got := guards(preflight.Lockout(r, now)); got != "break-glass=app;break-glass=data;" {
+		t.Fatalf("a closed account needs no way in, the others do: %s", got)
+	}
+}
+
 func TestLockoutSCPOnManagementChain(t *testing.T) {
 	r := reg()
 	r.OUs[0].SCPs = []string{"deny-leave"}           // platform: above mgmt

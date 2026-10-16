@@ -90,7 +90,8 @@ type Account struct {
 	// Empty for an account that does not exist yet.
 	ID    string `yaml:"id"`
 	Email string `yaml:"email"`
-	// OU is the name of the OU the account sits in; required.
+	// OU is the name of the OU the account sits in, or OURoot for an account
+	// directly under the organization root; required.
 	OU   string            `yaml:"ou"`
 	SCPs []string          `yaml:"scps"`
 	Tags map[string]string `yaml:"tags"`
@@ -98,6 +99,12 @@ type Account struct {
 	// the baseline. A reason, not a boolean: an exemption must explain
 	// itself.
 	BaselineExempt string `yaml:"baseline_exempt"`
+	// Closed, when set, is the note that the account was closed (AWS keeps it
+	// in the organization, SUSPENDED, until it is purged). A closed account
+	// is declared so that it is not reported as unmanaged; drift expects it
+	// not to be active, and it grants no assignment and needs no break-glass
+	// way in.
+	Closed string `yaml:"closed"`
 }
 
 // SCP is a service control policy.

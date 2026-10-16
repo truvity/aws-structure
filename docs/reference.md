@@ -17,7 +17,7 @@ error. Types are in `pkg/registry/types.go`; refusals in
 | --- | --- |
 | `organization` | `id` (`o-...`), `root_id` (`r-...`), `management_account` (an account name). `manage: true` is refused in v1 |
 | `ous[]` | `name`, `parent` (empty is the root), `id` (adopted OU), `scps[]`, `reason` (required) |
-| `accounts[]` | `name`, `id` (12 digits, once it exists), `email`, `ou` (required), `scps[]`, `tags`, `baseline_exempt` (a reason) |
+| `accounts[]` | `name`, `id` (12 digits, once it exists), `email`, `ou` (required; `root` for an account directly under the organization root), `scps[]`, `tags`, `baseline_exempt` (a reason), `closed` (a note: the account was closed and AWS keeps it SUSPENDED until it is purged) |
 | `scp_enforcement` | `dormant` (default); `enforced` is refused in v1 |
 | `scps[]` | `name`, `description`, `document` (JSON, at most 5120 bytes) |
 | `identity_center` | `instance_arn`, `identity_store_id`, `groups[]`, `permission_sets[]`, `assignments[]`, `break_glass` |
@@ -88,9 +88,9 @@ for _, f := range drift.Compare(reg, live) {
 | `unmanaged` | in AWS, not in the registry: an account, OU, permission set or assignment made by hand, or a service control policy attached while the registry is dormant (AWS's own `FullAWSAccess` excepted) |
 | `missing` | in the registry, not in AWS: an id that is gone, a permission set or assignment not there, or an account or OU without an id not yet created |
 | `moved` | an account or OU under a different parent than declared |
-| `edited` | an OU's name or an account's email differs |
+| `edited` | an OU's name or an account's email differs, or an account declared `closed` is active again |
 | `unrecorded-id` | it exists (an OU by name and parent, an account by email), but the registry has no id for it yet |
-| `not-active` | a declared account that is suspended or closed |
+| `not-active` | a declared account that is suspended or closed and not declared `closed` |
 
 Accounts are matched by id, or by email when the registry has none. OUs by id,
 or by name under their parent. Assignments are compared by account, permission
