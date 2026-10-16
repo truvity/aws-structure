@@ -21,9 +21,27 @@ import (
 //     OU or account that carries no policy: an exception must not outlive its
 //     cause.
 func Lockout(reg *registry.Registry, now time.Time) []Finding {
+	return LockoutWith(reg, now, nil)
+}
+
+// BreakGlassBuilder says the break-glass assignment is declared by
+// sso.DeployBreakGlass, not (only) by the registry's assignments. The builder
+// reaches every account that is not closed and that Skip does not name; the
+// registry guard counts those as reached, an account with no id yet included
+// (it has nothing to lock out of, and the builder reaches it once its id is
+// recorded). An account the builder skips is judged as before.
+type BreakGlassBuilder struct {
+	// Skip must be the function given to sso.BreakGlassArgs.Skip; nil skips
+	// nothing.
+	Skip func(account string) bool
+}
+
+// LockoutWith is Lockout told how the break-glass assignment is built. A nil
+// builder is Lockout.
+func LockoutWith(reg *registry.Registry, now time.Time, builder *BreakGlassBuilder) []Finding {
 	var out []Finding
 
-	out = append(out, breakGlassReach(reg)...)
+	out = append(out, breakGlassReach(reg, builder)...)
 
 	waived := Waived(reg, now)
 	chain := managementChain(reg)
@@ -63,7 +81,7 @@ func Lockout(reg *registry.Registry, now time.Time) []Finding {
 	return out
 }
 
-func breakGlassReach(reg *registry.Registry) []Finding {
+func breakGlassReach(reg *registry.Registry, builder *BreakGlassBuilder) []Finding {
 	bg := reg.IdentityCenter.BreakGlass
 	if bg == nil {
 		return []Finding{{
@@ -90,6 +108,16 @@ func breakGlassReach(reg *registry.Registry) []Finding {
 
 		for _, n := range a.OUs {
 			reachedOUs[n] = true
+		}
+	}
+
+	if builder != nil {
+		// An account with no id yet has nothing to be locked out of, and
+		// the builder reaches it as soon as the id is recorded.
+		for _, acct := range reg.Accounts {
+			if !acct.Closed && (builder.Skip == nil || !builder.Skip(acct.Name)) {
+				reached[acct.Name] = true
+			}
 		}
 	}
 

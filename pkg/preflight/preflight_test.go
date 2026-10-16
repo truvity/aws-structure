@@ -236,3 +236,40 @@ func TestEventLog(t *testing.T) {
 		t.Fatalf("bad line: %v", err)
 	}
 }
+
+func TestLockoutBreakGlassThroughBuilder(t *testing.T) {
+	r := reg()
+	r.IdentityCenter.Assignments = nil // no registry assignment declares break-glass
+	r.Accounts = append(r.Accounts,
+		registry.Account{Name: "top", ID: "acct-top", OU: registry.OURoot},
+		registry.Account{Name: "old", ID: "acct-old", OU: "workloads", Closed: true},
+		registry.Account{Name: "soon", OU: "workloads"})
+
+	if got := guards(preflight.Lockout(r, now)); got == "" {
+		t.Fatal("without the builder the registry must be refused")
+	}
+
+	// sso.DeployBreakGlass reaches every open account with an id, root OU
+	// included, so the guard passes.
+	if fs := preflight.LockoutWith(r, now, &preflight.BreakGlassBuilder{}); len(fs) != 0 {
+		t.Fatalf("builder-declared break-glass refused: %v", fs)
+	}
+
+	if fs := preflight.Check(nil, preflight.Opts{Registry: r, Now: now, BreakGlassBuilder: &preflight.BreakGlassBuilder{}}); len(fs) != 0 {
+		t.Fatalf("Check ignores the builder: %v", fs)
+	}
+
+	// An account the caller skips must be reached by the registry itself.
+	skip := &preflight.BreakGlassBuilder{Skip: func(a string) bool { return a == "app" }}
+	if got := guards(preflight.LockoutWith(r, now, skip)); got != "break-glass=app;" {
+		t.Fatalf("skipped account not judged: %s", got)
+	}
+
+	r.IdentityCenter.Assignments = []registry.Assignment{
+		{Principal: "admins", PrincipalType: "group", PermissionSet: "admin", Accounts: []string{"app"}},
+	}
+
+	if fs := preflight.LockoutWith(r, now, skip); len(fs) != 0 {
+		t.Fatalf("skipped account covered by the registry still refused: %v", fs)
+	}
+}

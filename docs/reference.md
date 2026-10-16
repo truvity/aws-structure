@@ -64,7 +64,10 @@ Without the automation API, write the events with
 | `waiver-expired` | a waiver past its `expires` day, or one for a target that carries no policy or is not above the management account (a `root` waiver only applies to plans) |
 
 `Lockout(reg, now)`, `Plan(steps, PlanOpts)`, `ProtectedTargets(reg)` and
-`Waived(reg, now)` are the parts; `Check` runs both halves.
+`Waived(reg, now)` are the parts; `Check` runs both halves. When the
+break-glass assignment is declared by `sso.DeployBreakGlass`, use
+`LockoutWith(reg, now, &BreakGlassBuilder{Skip: skip})` or
+`Opts.BreakGlassBuilder`.
 ## `pkg/drift`
 
 A read-only read of the organization and Identity Center, compared with the
@@ -435,6 +438,40 @@ Refused before anything is registered, all reported at once: no `Account`,
 neither `group` nor `user`; a repeated (permission set, principal, type); an
 empty `LegacyNames` entry; and a naming hook returning an empty or repeated
 name.
+
+### Break-glass: `sso.DeployBreakGlass`
+
+```go
+deployed, err := sso.DeployBreakGlass(ctx, logger, sso.BreakGlassArgs{
+	Registry:         reg,                  // identity_center.break_glass and the accounts
+	InstanceARN:      instanceARN,
+	PrincipalID:      groupIDs["admins"],   // the break-glass principal's id
+	PermissionSetARN: adminSet.Arn,         // the break-glass permission set's ARN
+	Provider:         provider,
+	Skip:             func(account string) bool { return inMyMatrix(account) },
+})
+```
+
+Declares one `AccountAssignment` of the break-glass principal and permission
+set on every account that is not `closed` and has an id (`Registry.BreakGlassTargets`),
+wherever it sits, `ou: root` included. Each account is one `AccountAssignments`
+component named `sso-break-glass-<account>` with one child named
+`break-glass-<account>-<permission set>-<principal>` (`-user` for a user), or
+by `Names`; `LegacyTopLevel` and `LegacyNames[account]` add aliases as for any
+assignment. It returns the accounts it declared.
+
+It adds break-glass beside the caller's other assignments. AWS holds a
+(principal, permission set, account) once, so **`Skip(account)` must return true
+for every account on which the caller's own assignments already grant the same
+principal and set**; those accounts get nothing here. Names are checked before
+anything is registered; a missing break-glass, instance, principal id,
+permission set ARN or provider, or an empty or repeated name, is refused.
+
+For the registry guard (`break-glass` below), pass
+`preflight.Opts{BreakGlassBuilder: &preflight.BreakGlassBuilder{Skip: skip}}`
+(or `preflight.LockoutWith`) with the same `skip`: the accounts the builder
+reaches then count as reached, and the skipped ones must still be reached by the
+registry's own assignments.
 
 ### Lookups
 

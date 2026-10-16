@@ -78,6 +78,9 @@ type Opts struct {
 	// BreakGlass identifies the break-glass assignments in the plan by id;
 	// nil skips the plan half of that guard (the registry half still runs).
 	BreakGlass *BreakGlassAssignment
+	// BreakGlassBuilder, when set, says the break-glass assignment is declared
+	// by sso.DeployBreakGlass; see LockoutWith.
+	BreakGlassBuilder *BreakGlassBuilder
 	// Now decides which waivers have expired. Zero means time.Now().
 	Now time.Time
 }
@@ -90,7 +93,7 @@ func Check(steps []Step, o Opts) []Finding {
 		now = time.Now()
 	}
 
-	out := Lockout(o.Registry, now)
+	out := LockoutWith(o.Registry, now, o.BreakGlassBuilder)
 
 	return append(out, Plan(steps, PlanOpts{
 		BreakGlass:       o.BreakGlass,

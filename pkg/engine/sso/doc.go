@@ -20,6 +20,9 @@
 // whole of Identity Center one unit, and a stack that manages only some sets
 // or only some accounts must be able to say so.
 //
+// DeployBreakGlass adds the registry's break-glass assignment on every open
+// account beside whatever the caller assigns; see its doc for Skip.
+//
 // Groups are not a component. Groups that a directory sync fills are only
 // looked up (LookupGroupIDs); creating a group the sync does not know of is
 // not something this package does.
