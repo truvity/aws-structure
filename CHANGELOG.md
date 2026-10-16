@@ -7,6 +7,7 @@ them, and for anything breaking, what to do.
 
 - **`pkg/registry`: an account may sit directly under the organization root.** `Account.OU` takes `registry.OURoot` (`root`), as the management account of an organization usually does; before, every account had to name a declared OU, so a registry could not describe such an organization without the drift check reporting that account as `unmanaged`. No OU may be named `root`. `pkg/drift` compares an account at `root` with the live root. Additive.
 - **`pkg/registry`: `Account.Closed`, the flag that an account was closed.** AWS keeps a closed account in the organization, SUSPENDED, until it is purged, so a registry could only call it undeclared (`unmanaged`) or declared (`not-active`) and drift was never clean. With `closed: true` the account is declared and expected not to be active: `pkg/drift` reports it only if it is active again (`edited`), no assignment is expected on it, and the break-glass reach guard of `pkg/preflight` does not ask for a way into it. Additive.
+- **`awsorgctl access-roles`: `-accounts`, and closed accounts are skipped.** `-accounts a,b` lists only the named accounts (an undeclared, id-less or closed name is refused); without it the command reads every account that has an id and is not `closed`, where before it tried to assume a role in each, closed ones too, and failed on the first. Additive.
 
 ## v0.25.0
 
