@@ -48,7 +48,7 @@ func (f Finding) String() string {
 func Compare(reg *registry.Registry, live *Live) []Finding {
 	c := &comparer{reg: reg, live: live, ouID: map[string]string{}, acctID: map[string]string{}, closed: map[string]bool{}}
 	for _, a := range reg.Accounts {
-		c.closed[a.Name] = a.Closed != ""
+		c.closed[a.Name] = a.Closed
 	}
 
 	c.ous()
@@ -225,9 +225,9 @@ func (c *comparer) accounts() {
 		active := l.State == "" || l.State == "ACTIVE"
 
 		switch {
-		case a.Closed != "" && active:
-			c.add(KindEdited, "account", a.Name, "declared closed ("+a.Closed+"), active in AWS")
-		case a.Closed == "" && !active:
+		case a.Closed && active:
+			c.add(KindEdited, "account", a.Name, "declared closed, active in AWS")
+		case !a.Closed && !active:
 			c.add(KindNotActive, "account", a.Name, l.State)
 		}
 	}

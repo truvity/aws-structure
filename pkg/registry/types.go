@@ -99,12 +99,11 @@ type Account struct {
 	// the baseline. A reason, not a boolean: an exemption must explain
 	// itself.
 	BaselineExempt string `yaml:"baseline_exempt"`
-	// Closed, when set, is the note that the account was closed (AWS keeps it
-	// in the organization, SUSPENDED, until it is purged). A closed account
-	// is declared so that it is not reported as unmanaged; drift expects it
-	// not to be active, and it grants no assignment and needs no break-glass
-	// way in.
-	Closed string `yaml:"closed"`
+	// Closed says the account was closed (AWS keeps it in the organization,
+	// SUSPENDED, until it is purged). A closed account is declared so that it
+	// is not reported as unmanaged; drift expects it not to be active, and it
+	// grants no assignment and needs no break-glass way in.
+	Closed bool `yaml:"closed"`
 }
 
 // SCP is a service control policy.
