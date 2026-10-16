@@ -81,7 +81,7 @@ awsorgctl validate     -registry registry.yaml
 pulumi preview --event-log preview.jsonl            # in your stack
 awsorgctl preflight    -registry registry.yaml -events preview.jsonl
 awsorgctl drift        -registry registry.yaml -profile <management profile> -sso-region <region>
-awsorgctl access-roles -registry registry.yaml -profile <management profile> -out access-roles.yaml
+awsorgctl access-roles -registry registry.yaml -profile <management profile> -accounts <name,name> -out access-roles.yaml
 awsorgctl aws-ini      -registry registry.yaml -start-url <portal URL> -sso-region <region> -region <region>
 ```
 
