@@ -1,0 +1,54 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowOwnBuckets",
+      "Effect": "Allow",
+      "Action": "s3:*",
+      "Resource": [
+        "arn:part:s3:::acme-*-cache",
+        "arn:part:s3:::acme-*-scratch"
+      ]
+    },
+    {
+      "Sid": "AllowBucketList",
+      "Effect": "Allow",
+      "Action": "s3:ListAllMyBuckets",
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowAssumeProjectBuilders",
+      "Effect": "Allow",
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ],
+      "Resource": [
+        "arn:part:iam::*:role/*-builder-*",
+        "arn:part:iam::*:role/*-sandbox-*"
+      ]
+    },
+    {
+      "Sid": "DenyBoundaryPolicyEdit",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion"
+      ],
+      "Resource": [
+        "arn:part:iam::*:policy/bound@*"
+      ]
+    },
+    {
+      "Sid": "NoBoundaryDelete",
+      "Effect": "Deny",
+      "Action": [
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:DeleteUserPermissionsBoundary"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowIAMRead",
+      "Effect": "Allow",
+      "Action": [
+        "iam:Get*",
+        "iam:List*"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "AllowCreateManagedRole",
+      "Effect": "Allow",
+      "Action": "iam:CreateRole",
+      "Resource": "arn:part:iam::*:role/*-db-*",
+      "Condition": {
+        "ArnLike": {
+          "iam:PermissionsBoundary": "arn:part:iam::*:policy/bound@default"
+        },
+        "StringEquals": {
+          "aws:RequestTag/services.k8s.aws/namespace": "db-system"
+        }
+      }
+    },
+    {
+      "Sid": "AllowSetBoundaryOnManagedRole",
+      "Effect": "Allow",
+      "Action": "iam:PutRolePermissionsBoundary",
+      "Resource": "arn:part:iam::*:role/*-db-*",
+      "Condition": {
+        "ArnLike": {
+          "iam:PermissionsBoundary": "arn:part:iam::*:policy/bound@default"
+        },
+        "StringEquals": {
+          "aws:ResourceTag/services.k8s.aws/namespace": "db-system"
+        }
+      }
+    },
+    {
+      "Sid": "AllowManageManagedRole",
+      "Effect": "Allow",
+      "Action": [
+        "iam:UpdateRole",
+        "iam:UpdateRoleDescription",
+        "iam:UpdateAssumeRolePolicy",
+        "iam:DeleteRole",
+        "iam:TagRole",
+        "iam:UntagRole",
+        "iam:PutRolePolicy",
+        "iam:DeleteRolePolicy"
+      ],
+      "Resource": "arn:part:iam::*:role/*-db-*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/services.k8s.aws/namespace": "db-system"
+        }
+      }
+    },
+    {
+      "Sid": "AllowAssumeProjectBuilders",
+      "Effect": "Allow",
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ],
+      "Resource": [
+        "arn:part:iam::*:role/*-builder-*",
+        "arn:part:iam::*:role/*-sandbox-*"
+      ]
+    },
+    {
+      "Sid": "DenyBoundaryPolicyEdit",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion"
+      ],
+      "Resource": [
+        "arn:part:iam::*:policy/bound@*"
+      ]
+    },
+    {
+      "Sid": "NoBoundaryDelete",
+      "Effect": "Deny",
+      "Action": [
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:DeleteUserPermissionsBoundary"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
