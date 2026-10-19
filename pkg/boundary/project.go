@@ -156,9 +156,17 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 		},
 		{Sid: "AllowBucketList", Effect: allow, Action: "s3:ListAllMyBuckets", Resource: "*"},
 		{
-			// A key has no tag before it exists, so creation is conditioned on the request tag.
-			Sid: "AllowCreateKey", Effect: allow, Action: "kms:CreateKey", Resource: "*",
-			Condition: map[string]any{condStringEquals: map[string]any{"aws:RequestTag/project": tagProject}},
+			// A key has no tag before it exists, so creation is conditioned on the
+			// request tag. CreateKey with Tags is also authorized as
+			// kms:TagResource on that key, so it is allowed here too, under the
+			// same request tag and only where the key carries no project tag (a
+			// key of another project is never retagged; DenyClaimUntaggedKey
+			// closes the rest).
+			Sid: "AllowCreateKey", Effect: allow, Action: []string{"kms:CreateKey", "kms:TagResource"}, Resource: "*",
+			Condition: map[string]any{
+				condStringEquals: map[string]any{"aws:RequestTag/project": tagProject},
+				"Null":           map[string]any{"aws:ResourceTag/project": "true"},
+			},
 		},
 		{
 			Sid: "AllowManageOwnKey", Effect: allow,
@@ -197,6 +205,12 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 		{
 			Sid: "DenyUntagProjectOrCluster", Effect: deny, Action: "iam:UntagRole", Resource: "*",
 			Condition: map[string]any{"ForAnyValue:StringEquals": map[string]any{"aws:TagKeys": []string{"project", "cluster"}}},
+		},
+		{
+			// A key without a project tag belongs to no project: a builder must
+			// not claim it by tagging it with its own.
+			Sid: "DenyClaimUntaggedKey", Effect: deny, Action: "kms:TagResource", Resource: "*",
+			Condition: map[string]any{"Null": map[string]any{"aws:ResourceTag/project": "true"}},
 		},
 		{
 			Sid: "DenyKeyRetirement", Effect: deny, Action: []string{"kms:ScheduleKeyDeletion", "kms:DisableKey"},

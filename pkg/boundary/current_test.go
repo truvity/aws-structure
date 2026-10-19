@@ -705,3 +705,40 @@ func TestEmployeeBuilderIgnoresLegacyNames(t *testing.T) {
 		t.Error("the employee builder accepts legacy names")
 	}
 }
+
+// A key can be created with tags, which AWS authorizes as kms:TagResource on a
+// key that has no tag yet; and a key without a project tag belongs to no
+// project, so a builder must not claim it by tagging it.
+func TestBuildersTagKeysOnCreateButCannotClaimUntaggedKeys(t *testing.T) {
+	for form, s := range map[string]boundary.Spec{"final": currentSpec(), "transition": transitionSpec()} {
+		for _, name := range []string{"bound@tech-project-ack", "bound@tech-employee-ack"} {
+			st := statements(t, docs(t, s)[name])
+
+			create := st["AllowCreateKey"]
+			if create.Effect != "Allow" || !slices.Contains(asList(create.Action), "kms:CreateKey") ||
+				!slices.Contains(asList(create.Action), "kms:TagResource") {
+				t.Errorf("%s %s: AllowCreateKey does not allow kms:CreateKey and kms:TagResource: %v", form, name, create.Action)
+			}
+
+			if create.Condition["StringEquals"]["aws:RequestTag/project"] != "${aws:PrincipalTag/project}" {
+				t.Errorf("%s %s: key creation is not bound to the request tag", form, name)
+			}
+
+			// Never a retag of a key that already has a project.
+			if create.Condition["Null"]["aws:ResourceTag/project"] != "true" {
+				t.Errorf("%s %s: AllowCreateKey can retag a key that has a project", form, name)
+			}
+
+			claim := st["DenyClaimUntaggedKey"]
+			if claim.Effect != "Deny" || asList(claim.Action)[0] != "kms:TagResource" ||
+				claim.Condition["Null"]["aws:ResourceTag/project"] != "true" {
+				t.Errorf("%s %s: no Deny of kms:TagResource on a key without a project tag: %+v", form, name, claim)
+			}
+
+			// The ordinary retag of an own key stays.
+			if !slices.Contains(asList(st["AllowManageOwnKey"].Action), "kms:TagResource") {
+				t.Errorf("%s %s: kms:TagResource on an own key is gone", form, name)
+			}
+		}
+	}
+}
