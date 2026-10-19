@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.28.0
 
 - **`pkg/boundary`: the role, controller and project boundaries, beside the old ones.** Additive: a `Spec` that names only the old shapes renders exactly the nine documents it rendered before, byte for byte. New `Names` fields name a second generation, all or nothing (a half-named generation is refused): `RoleAdmin`, `RoleDeployer`, `RoleAuditor`; `ACKControllerIAM`, `ACKControllerEKS`, `ACKControllerS3`, `ACKControllerKMS`, `ACKControllerDynamoDB`; `ProjectACK`, `EmployeeACK`, `ProjectWorkload`. `Default` and `EKSAutoNode` are shared. `Policies` returns the old documents (when named), then the new ones, so both generations can exist in an account while roles move over. New `Spec` fields: `ProjectBucketPrefix`, `ACK` (`ACKScope`: `BuilderRoles`, `IAMNamespace`, `IAMRoleSlugs`, `PodIdentityRoleSlugs`, `Buckets`; every platform-specific name is an input, none is written in the package) and `LegacyProjectNames`.
   - **`RoleAdmin`, `RoleAuditor`:** the admin and audit documents under the new names, including the `OrgAdmin` variants. The admin document lists each delegated boundary by its exact name (and itself): `Spec.ClassPrefix` and its wildcard apply only to the old `Names.Admin`. Adding a boundary to the hierarchy is a reviewed edit of the admin document; an unlisted `<prefix>tech-...` boundary is out of reach.
