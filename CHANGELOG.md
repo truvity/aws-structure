@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.27.1
 
 - **`pkg/boundary`: `OrgAdminManagement` no longer denies changes to the reserved roles of Identity Center.** In the management account Identity Center provisions a permission set's inline policy, managed-policy attachments and boundary onto the `AWSReservedSSO_*` roles with the caller's IAM permissions, so the inherited `DenyChangePermissionsSetsRoles` deny of `iam:PutRolePolicy` and the other role actions on `role/aws-reserved/sso.amazonaws.com/*` stopped a role-admin session from provisioning any permission-set change to that account. In the management variant that statement now lists only `role/AWSServiceRoleFor*`, which stays denied. `OrgAdminOff` and `OrgAdminMember` are byte for byte as before (member accounts are provisioned through the service-linked role). Only a caller that set `OrgAdmin: OrgAdminManagement` sees the boundary change. Fix.
 
