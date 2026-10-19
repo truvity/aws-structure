@@ -265,17 +265,6 @@
       }
     },
     {
-      "Sid": "DenyClaimUntaggedKey",
-      "Effect": "Deny",
-      "Action": "kms:TagResource",
-      "Resource": "*",
-      "Condition": {
-        "Null": {
-          "aws:ResourceTag/project": "true"
-        }
-      }
-    },
-    {
       "Sid": "DenyKeyRetirement",
       "Effect": "Deny",
       "Action": [
