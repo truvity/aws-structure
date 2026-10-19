@@ -685,7 +685,16 @@ admin and the organization administrator in the management account. Opt-in: the 
 |---|---|---|
 | `OrgAdminOff` (`""`) | any (default) | unchanged |
 | `OrgAdminMember` | every member account | the default plus `DenyOrganizationAdmin`: `organizations:*`, `account:*`, `sso:*`, `sso-directory:*`, `identitystore:*`, with the carve-outs below |
-| `OrgAdminManagement` | the management account | adds `AllowOrganizationAdmin` and `AllowBoundaryPolicyEdit`, drops `DenyBoundaryPolicyEdit`; keeps the rest of the deny list (SSO and service-linked roles, roles and users without a delegated boundary, boundary removal, destructive list, `s3:DeleteBucket` on `pulumi-state-*`) |
+| `OrgAdminManagement` | the management account | adds `AllowOrganizationAdmin` and `AllowBoundaryPolicyEdit`, drops `DenyBoundaryPolicyEdit`; no longer denies changes to the reserved roles of Identity Center (`aws-reserved/sso.amazonaws.com/*`), see below; keeps the rest of the deny list (service-linked roles, roles and users without a delegated boundary, boundary removal, destructive list, `s3:DeleteBucket` on `pulumi-state-*`) |
+
+In the management account Identity Center provisions a permission set's changes (inline policy, managed
+policy attachments, boundary) onto the `AWSReservedSSO_*` roles with the permissions of the caller, so
+`OrgAdminManagement` does not deny `iam:PutRolePolicy`, `iam:AttachRolePolicy` and the other role actions
+on `role/aws-reserved/sso.amazonaws.com/*`; otherwise a role-admin session could not provision any
+permission-set change to that account. In member accounts provisioning goes through the Identity Center
+service-linked role, which the boundary does not limit, so `OrgAdminOff` and `OrgAdminMember` keep the deny.
+Changes to `role/AWSServiceRoleFor*` stay denied in every variant: provisioning does not edit service-linked
+roles, and AWS manages those itself.
 
 In the management account the admin may rewrite the boundary that bounds it, so the admin set there
 is equivalent to a full administrator, by design: it is the organization owner.
