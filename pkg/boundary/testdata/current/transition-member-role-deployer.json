@@ -1,0 +1,75 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowAll",
+      "Effect": "Allow",
+      "Action": "*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "DenyCreateRoleWithoutProjectTag",
+      "Effect": "Deny",
+      "Action": "iam:CreateRole",
+      "Resource": "*",
+      "Condition": {
+        "Null": {
+          "aws:RequestTag/project": "true"
+        }
+      }
+    },
+    {
+      "Sid": "DenyCreateRoleWithoutClusterTag",
+      "Effect": "Deny",
+      "Action": "iam:CreateRole",
+      "Resource": "*",
+      "Condition": {
+        "Null": {
+          "aws:RequestTag/cluster": "true"
+        }
+      }
+    },
+    {
+      "Sid": "DenyCreateOrChangeWithoutAllowedBoundary",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreateRole",
+        "iam:PutRolePermissionsBoundary",
+        "iam:CreateUser",
+        "iam:PutUserPermissionsBoundary"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringNotLike": {
+          "iam:PermissionsBoundary": [
+            "arn:part:iam::*:policy/bound@tech-project-workload",
+            "arn:part:iam::*:policy/bound@project",
+            "arn:part:iam::*:policy/bound@default"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "DenyBoundaryPolicyEdit",
+      "Effect": "Deny",
+      "Action": [
+        "iam:CreatePolicyVersion",
+        "iam:DeletePolicy",
+        "iam:DeletePolicyVersion",
+        "iam:SetDefaultPolicyVersion"
+      ],
+      "Resource": [
+        "arn:part:iam::*:policy/bound@*"
+      ]
+    },
+    {
+      "Sid": "NoBoundaryDelete",
+      "Effect": "Deny",
+      "Action": [
+        "iam:DeleteRolePermissionsBoundary",
+        "iam:DeleteUserPermissionsBoundary"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

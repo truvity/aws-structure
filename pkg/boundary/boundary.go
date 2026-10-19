@@ -4,16 +4,68 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/truvity/aws-structure/pkg/registry"
 )
 
 // Names are the names the caller gives each shape, as they appear in IAM.
+//
+// The names form two generations that may be used at the same time, so that
+// an organization can create the new boundaries beside the old ones, move its
+// roles over and delete the old ones later:
+//
+//   - the legacy shapes: Admin, Deploy, Viewer, Project, Audit, ACKIAM and
+//     CAPA. Each is all-or-nothing: leave all seven empty to render none of
+//     them;
+//   - the role/controller/project shapes: RoleAdmin, RoleDeployer,
+//     RoleAuditor, the five ACKController* names, ProjectACK, EmployeeACK and
+//     ProjectWorkload. Also all-or-nothing, and they need Spec.ProjectBucketPrefix
+//     and Spec.ACK.
+//
+// Default and EKSAutoNode are shared by both generations and always required.
 type Names struct {
 	Admin, Deploy, Default, Viewer, Project, Audit string
 	// ACKIAM, CAPA and EKSAutoNode are the provisioner boundaries.
 	ACKIAM, CAPA, EKSAutoNode string
+
+	// RoleAdmin, RoleDeployer and RoleAuditor are the human boundaries that
+	// replace Admin, Deploy and Audit.
+	RoleAdmin, RoleDeployer, RoleAuditor string
+	// ACKControllerIAM, ACKControllerEKS, ACKControllerS3, ACKControllerKMS and
+	// ACKControllerDynamoDB are the boundaries of the ACK controllers' own
+	// roles, one per controller.
+	ACKControllerIAM, ACKControllerEKS, ACKControllerS3, ACKControllerKMS, ACKControllerDynamoDB string
+	// ProjectACK is the boundary of a project's builder role, the role every
+	// ACK controller assumes to act for that project's namespaces. EmployeeACK
+	// is the same for an employee sandbox. ProjectWorkload bounds the roles a
+	// builder creates for the project's pods.
+	ProjectACK, EmployeeACK, ProjectWorkload string
+}
+
+// ACKScope names the platform's own ACK-managed resources: what the
+// controllers' own roles (not the project builders) may touch. Every value is
+// a caller input; the package knows only the shapes.
+type ACKScope struct {
+	// BuilderRoles are the role-name patterns of the builder roles (project
+	// and employee) that every controller may assume and tag a session on,
+	// such as "*-builder-*". Required.
+	BuilderRoles []string
+	// IAMNamespace is the value of the "services.k8s.aws/namespace" tag
+	// (ACK's own resource tag) on the roles the IAM controller manages on its
+	// own role. Required.
+	IAMNamespace string
+	// IAMRoleSlugs are the name slugs of those roles: the slug "x" stands for
+	// the role names "*-x-*" (and, for the legacy deny, "<cluster>-x-*").
+	// Required.
+	IAMRoleSlugs []string
+	// PodIdentityRoleSlugs are further slugs of roles the EKS controller may
+	// bind to a pod beside IAMRoleSlugs. Optional.
+	PodIdentityRoleSlugs []string
+	// Buckets are the bucket-name patterns (no ARN prefix) the S3 controller's
+	// own role administers. Required.
+	Buckets []string
 }
 
 // Entry is one boundary of the hierarchy: whom it may delegate to and which tags
@@ -37,31 +89,84 @@ type Spec struct {
 	ClassPrefix string
 	Names       Names
 	// Hierarchy lists who may delegate to whom. Required: it must contain
-	// Names.Admin, Names.Deploy and Names.ACKIAM.
+	// an entry for each shape that delegates (Names.Admin, Names.Deploy and
+	// Names.ACKIAM; Names.RoleAdmin, Names.RoleDeployer,
+	// Names.ACKControllerIAM, Names.ProjectACK and Names.EmployeeACK).
 	Hierarchy []Entry
+	// ProjectBucketPrefix is what the name of every project bucket starts
+	// with, before the cluster: "<prefix><cluster>-<project>-<name>". Required
+	// for the role/controller/project shapes.
+	ProjectBucketPrefix string
+	// ACK scopes the controllers' own roles. Required for the
+	// role/controller/project shapes.
+	ACK ACKScope
+	// LegacyProjectNames renders the transition form of the project
+	// shapes: ProjectACK and ProjectWorkload also accept the legacy names of
+	// roles, policies and buckets ("<cluster>-*<project>-*" and
+	// "<prefix><cluster>-*<project>-*"), ProjectACK denies the platform roles
+	// those patterns would reach, and RoleDeployer drops its name rule.
+	// The final form (false) is the same policy name at a new version, so no
+	// role has to be re-attached. EmployeeACK has no legacy names and ignores
+	// the flag.
+	LegacyProjectNames bool
 	// OrgAdmin selects the variant of the admin boundary. The zero value
 	// (OrgAdminOff) is the admin boundary every existing caller gets. See
 	// OrgAdminMode.
 	OrgAdmin OrgAdminMode
 }
 
+// legacyNames returns the legacy generation by field name, in a stable order.
+func (s *Spec) legacyNames() [][2]string {
+	return [][2]string{
+		{"Names.Admin", s.Names.Admin}, {"Names.Deploy", s.Names.Deploy}, {"Names.Viewer", s.Names.Viewer},
+		{"Names.Project", s.Names.Project}, {"Names.Audit", s.Names.Audit},
+		{"Names.ACKIAM", s.Names.ACKIAM}, {"Names.CAPA", s.Names.CAPA},
+	}
+}
+
+// currentNames returns the role/controller/project generation by field name,
+// in the order Policies renders it.
+func (s *Spec) currentNames() [][2]string {
+	return [][2]string{
+		{"Names.RoleAdmin", s.Names.RoleAdmin}, {"Names.RoleDeployer", s.Names.RoleDeployer},
+		{"Names.RoleAuditor", s.Names.RoleAuditor},
+		{"Names.ACKControllerIAM", s.Names.ACKControllerIAM}, {"Names.ACKControllerEKS", s.Names.ACKControllerEKS},
+		{"Names.ACKControllerS3", s.Names.ACKControllerS3}, {"Names.ACKControllerKMS", s.Names.ACKControllerKMS},
+		{"Names.ACKControllerDynamoDB", s.Names.ACKControllerDynamoDB},
+		{"Names.ProjectACK", s.Names.ProjectACK}, {"Names.EmployeeACK", s.Names.EmployeeACK},
+		{"Names.ProjectWorkload", s.Names.ProjectWorkload},
+	}
+}
+
+func anySet(group [][2]string) bool {
+	for _, n := range group {
+		if n[1] != "" {
+			return true
+		}
+	}
+
+	return false
+}
+
+// hasLegacy and hasCurrent report which generation of shapes is rendered.
+func (s *Spec) hasLegacy() bool  { return anySet(s.legacyNames()) }
+func (s *Spec) hasCurrent() bool { return anySet(s.currentNames()) }
+
 // Validate reports every problem with s at once, or returns nil.
 func (s *Spec) Validate() error {
 	var errs []error
 
 	for name, v := range map[string]string{
-		"Partition": s.Partition, "Prefix": s.Prefix, "ClassPrefix": s.ClassPrefix,
-		"Names.Admin": s.Names.Admin, "Names.Deploy": s.Names.Deploy, "Names.Default": s.Names.Default,
-		"Names.Viewer": s.Names.Viewer, "Names.Project": s.Names.Project, "Names.Audit": s.Names.Audit,
-		"Names.ACKIAM": s.Names.ACKIAM, "Names.CAPA": s.Names.CAPA, "Names.EKSAutoNode": s.Names.EKSAutoNode,
+		"Partition": s.Partition, "Prefix": s.Prefix,
+		"Names.Default": s.Names.Default, "Names.EKSAutoNode": s.Names.EKSAutoNode,
 	} {
 		if v == "" {
 			errs = append(errs, fmt.Errorf("spec: %s is empty", name))
 		}
 	}
 
-	if !strings.HasPrefix(s.ClassPrefix, s.Prefix) {
-		errs = append(errs, fmt.Errorf("spec: ClassPrefix %q does not extend Prefix %q", s.ClassPrefix, s.Prefix))
+	if !s.hasLegacy() && !s.hasCurrent() {
+		errs = append(errs, errors.New("spec: no shape is named: set the legacy names (Names.Admin, ...) or the role names (Names.RoleAdmin, ...)"))
 	}
 
 	have := map[string]bool{}
@@ -69,21 +174,124 @@ func (s *Spec) Validate() error {
 		have[e.Name] = true
 	}
 
-	for _, n := range []string{s.Names.Admin, s.Names.Deploy, s.Names.ACKIAM} {
-		if !have[n] {
+	var needEntries []string
+
+	if s.hasLegacy() {
+		for _, n := range s.legacyNames() {
+			if n[1] == "" {
+				errs = append(errs, fmt.Errorf("spec: %s is empty", n[0]))
+			}
+		}
+
+		if s.ClassPrefix == "" {
+			errs = append(errs, errors.New("spec: ClassPrefix is empty"))
+		} else if !strings.HasPrefix(s.ClassPrefix, s.Prefix) {
+			errs = append(errs, fmt.Errorf("spec: ClassPrefix %q does not extend Prefix %q", s.ClassPrefix, s.Prefix))
+		}
+
+		needEntries = append(needEntries, s.Names.Admin, s.Names.Deploy, s.Names.ACKIAM)
+	}
+
+	if s.hasCurrent() {
+		for _, n := range s.currentNames() {
+			if n[1] == "" {
+				errs = append(errs, fmt.Errorf("spec: %s is empty", n[0]))
+			}
+		}
+
+		errs = append(errs, s.validateCurrent()...)
+
+		needEntries = append(needEntries, s.Names.RoleAdmin, s.Names.RoleDeployer, s.Names.ACKControllerIAM,
+			s.Names.ProjectACK, s.Names.EmployeeACK)
+	}
+
+	for _, n := range needEntries {
+		if n != "" && !have[n] {
 			errs = append(errs, fmt.Errorf("spec: Hierarchy has no entry for %q", n))
 		}
 	}
 
+	errs = append(errs, s.validateDistinctNames()...)
 	errs = append(errs, s.validateHierarchy()...)
 
 	return errors.Join(errs...)
 }
 
+// validateCurrent checks the inputs only the role/controller/project shapes
+// use.
+func (s *Spec) validateCurrent() []error {
+	var errs []error
+
+	if s.ProjectBucketPrefix == "" {
+		errs = append(errs, errors.New("spec: ProjectBucketPrefix is empty"))
+	}
+
+	if s.ACK.IAMNamespace == "" {
+		errs = append(errs, errors.New("spec: ACK.IAMNamespace is empty"))
+	}
+
+	for name, v := range map[string][]string{
+		"ACK.BuilderRoles": s.ACK.BuilderRoles, "ACK.IAMRoleSlugs": s.ACK.IAMRoleSlugs,
+		"ACK.PodIdentityRoleSlugs": s.ACK.PodIdentityRoleSlugs, "ACK.Buckets": s.ACK.Buckets,
+	} {
+		if len(v) == 0 && name != "ACK.PodIdentityRoleSlugs" {
+			errs = append(errs, fmt.Errorf("spec: %s is empty", name))
+		}
+
+		for _, x := range v {
+			if x == "" {
+				errs = append(errs, fmt.Errorf("spec: %s has an empty entry", name))
+			}
+		}
+	}
+
+	return errs
+}
+
+// validateDistinctNames refuses one name given to two shapes: two documents of
+// one name cannot both be created.
+func (s *Spec) validateDistinctNames() []error {
+	var errs []error
+
+	seen := map[string]string{}
+
+	all := append([][2]string{{"Names.Default", s.Names.Default}, {"Names.EKSAutoNode", s.Names.EKSAutoNode}},
+		append(s.legacyNames(), s.currentNames()...)...)
+
+	for _, n := range all {
+		if n[1] == "" {
+			continue
+		}
+
+		if prev, ok := seen[n[1]]; ok {
+			errs = append(errs, fmt.Errorf("spec: %s and %s are both named %q", prev, n[0], n[1]))
+
+			continue
+		}
+
+		seen[n[1]] = n[0]
+	}
+
+	return errs
+}
+
+// leaves returns the boundaries that delegate to nothing.
+func (s *Spec) leaves() map[string]bool {
+	leaves := map[string]bool{
+		s.Names.Default: true, s.Names.Project: true, s.Names.Audit: true,
+		s.Names.RoleAuditor: true, s.Names.ProjectWorkload: true,
+		s.Names.ACKControllerEKS: true, s.Names.ACKControllerS3: true,
+		s.Names.ACKControllerKMS: true, s.Names.ACKControllerDynamoDB: true,
+	}
+	delete(leaves, "") // an empty name is reported by the required-names check
+
+	return leaves
+}
+
 // validateHierarchy checks the delegation graph: every delegate is an entry of
-// the hierarchy, the leaf shapes (Names.Default, Names.Project and
-// Names.Audit) delegate to nothing, and no boundary can reach itself through
-// its delegates.
+// the hierarchy and a name, not a pattern, the leaf shapes delegate to
+// nothing, the builders (ProjectACK, EmployeeACK) delegate to exactly
+// ProjectWorkload, and no boundary can reach itself through its delegates.
 func (s *Spec) validateHierarchy() []error {
 	var errs []error
 
@@ -92,13 +300,19 @@ func (s *Spec) validateHierarchy() []error {
 		adj[e.Name] = e.Delegates
 	}
 
-	leaves := map[string]bool{s.Names.Default: true, s.Names.Project: true, s.Names.Audit: true}
-	delete(leaves, "") // an empty name is reported by the required-names check
-
+	leaves := s.leaves()
 	undefined := false
 
 	for _, e := range s.Hierarchy {
+		if strings.ContainsAny(e.Name, "*?") {
+			errs = append(errs, fmt.Errorf("spec: boundary name %q is a pattern: boundaries are named exactly", e.Name))
+		}
+
 		for _, d := range e.Delegates {
+			if strings.ContainsAny(d, "*?") {
+				errs = append(errs, fmt.Errorf("spec: boundary %q delegates to the pattern %q: delegates are exact names", e.Name, d))
+			}
+
 			if _, ok := adj[d]; !ok {
 				undefined = true
 
@@ -108,6 +322,15 @@ func (s *Spec) validateHierarchy() []error {
 
 		if leaves[e.Name] && len(e.Delegates) > 0 {
 			errs = append(errs, fmt.Errorf("spec: leaf boundary %q must not have delegates", e.Name))
+		}
+
+		if e.Name != "" && (e.Name == s.Names.ACKControllerIAM || e.Name == s.Names.RoleDeployer) && len(e.Delegates) == 0 {
+			errs = append(errs, fmt.Errorf("spec: boundary %q must delegate to at least one boundary", e.Name))
+		}
+
+		if s.isBuilder(e.Name) && (len(e.Delegates) != 1 || e.Delegates[0] != s.Names.ProjectWorkload) {
+			errs = append(errs, fmt.Errorf("spec: builder boundary %q must delegate to exactly %q, got %v",
+				e.Name, s.Names.ProjectWorkload, e.Delegates))
 		}
 	}
 
@@ -158,15 +381,26 @@ func (s *Spec) validateHierarchy() []error {
 	return errs
 }
 
+// isBuilder reports whether name is a builder boundary: a role that creates
+// other roles for a project or an employee sandbox.
+func (s *Spec) isBuilder(name string) bool {
+	return name != "" && (name == s.Names.ProjectACK || name == s.Names.EmployeeACK)
+}
+
 // arn is the ARN pattern of a boundary policy of any account.
 func (s *Spec) arn(name string) string {
 	return fmt.Sprintf("arn:%s:iam::*:policy/%s", s.Partition, name)
 }
 
 // DelegateARNs returns the ARN patterns of the boundaries name may attach, or
-// nil for a leaf. The admin boundary also names itself and replaces its
+// nil for a leaf.
+//
+// The legacy admin boundary (Names.Admin) also names itself and replaces its
 // delegates of the provisioner class with one wildcard (the root boundary may
-// delegate to any of them, present or future).
+// delegate to any of them, present or future). The role admin boundary
+// (Names.RoleAdmin) names itself and its delegates, every one by its exact
+// name, and no wildcard: adding a boundary to the hierarchy is a reviewed edit
+// of the document.
 func (s *Spec) DelegateARNs(name string) []string {
 	var delegates []string
 
@@ -184,7 +418,16 @@ func (s *Spec) DelegateARNs(name string) []string {
 		return nil
 	}
 
-	if name != s.Names.Admin {
+	if name == s.Names.RoleAdmin && name != "" {
+		self := s.arn(name)
+		if slices.Contains(delegates, self) {
+			return delegates
+		}
+
+		return append([]string{self}, delegates...)
+	}
+
+	if name != s.Names.Admin || name == "" {
 		return delegates
 	}
 
@@ -232,12 +475,13 @@ type (
 	}
 
 	statement struct {
-		Sid       string         `json:"Sid"`
-		Effect    string         `json:"Effect"`
-		Action    any            `json:"Action,omitempty"`
-		NotAction any            `json:"NotAction,omitempty"`
-		Resource  any            `json:"Resource"`
-		Condition map[string]any `json:"Condition,omitempty"`
+		Sid         string         `json:"Sid"`
+		Effect      string         `json:"Effect"`
+		Action      any            `json:"Action,omitempty"`
+		NotAction   any            `json:"NotAction,omitempty"`
+		Resource    any            `json:"Resource,omitempty"`
+		NotResource any            `json:"NotResource,omitempty"`
+		Condition   map[string]any `json:"Condition,omitempty"`
 	}
 )
 
@@ -327,7 +571,13 @@ func marshal(name string, d document) (string, error) {
 	return string(b), nil
 }
 
-func (s *Spec) admin() (string, error) {
+func (s *Spec) admin() (string, error) { return s.adminAs(s.Names.Admin) }
+
+// roleAdmin is the admin boundary under the role name: the same document, its
+// delegation list exact (see DelegateARNs).
+func (s *Spec) roleAdmin() (string, error) { return s.adminAs(s.Names.RoleAdmin) }
+
+func (s *Spec) adminAs(name string) (string, error) {
 	stmts := []statement{
 		allowAll(),
 	}
@@ -347,7 +597,7 @@ func (s *Spec) admin() (string, error) {
 			},
 			Resource: s.denyPermissionSetRoleResources(),
 		},
-		denyWithoutBoundary("DenyCreateOrChangeWithoutBoundary", s.DelegateARNs(s.Names.Admin)),
+		denyWithoutBoundary("DenyCreateOrChangeWithoutBoundary", s.DelegateARNs(name)),
 	)
 
 	if s.OrgAdmin != OrgAdminManagement {
@@ -367,7 +617,7 @@ func (s *Spec) admin() (string, error) {
 		stmts = append(stmts, denyOrgAdmin())
 	}
 
-	return marshal(s.Names.Admin, document{Version: policyVersion, Statement: stmts})
+	return marshal(name, document{Version: policyVersion, Statement: stmts})
 }
 
 func (s *Spec) viewer() (string, error) {
@@ -450,8 +700,13 @@ func (s *Spec) project() (string, error) {
 	}})
 }
 
-func (s *Spec) audit() (string, error) {
-	return marshal(s.Names.Audit, document{Version: policyVersion, Statement: []statement{
+func (s *Spec) audit() (string, error) { return s.auditAs(s.Names.Audit) }
+
+// roleAuditor is the audit boundary under the role name: the same document.
+func (s *Spec) roleAuditor() (string, error) { return s.auditAs(s.Names.RoleAuditor) }
+
+func (s *Spec) auditAs(name string) (string, error) {
+	return marshal(name, document{Version: policyVersion, Statement: []statement{
 		allowAll(),
 		{Sid: "DenyAllIAMWrite", Effect: deny, Action: iamWriteDenied, Resource: "*"},
 		{Sid: "DenyDestructiveActions", Effect: deny, Action: destructiveActions, Resource: "*"},
@@ -463,9 +718,13 @@ func (s *Spec) audit() (string, error) {
 }
 
 // Policies returns the boundary policies every account carries, each as a
-// registry.Boundary, in a stable order: admin, viewer, default, ACK IAM, CAPA,
-// EKS Auto Mode node, deploy, project, audit. The viewer is deprecated (use
-// the default) and kept for existing roles; it is the default's document.
+// registry.Boundary, in a stable order: the legacy shapes (admin, viewer,
+// default, ACK IAM, CAPA, EKS Auto Mode node, deploy, project, audit), then the
+// role/controller/project shapes (role admin, role deployer, role auditor, the
+// five ACK controllers, the project builder, the employee builder, the project
+// workload). A generation whose names are all empty is left out, except Default
+// and EKSAutoNode, which are always rendered. The viewer is deprecated (use the
+// default) and kept for existing roles; it is the default's document.
 func Policies(s Spec) ([]registry.Boundary, error) {
 	if err := s.Validate(); err != nil {
 		return nil, fmt.Errorf("boundary: %w", err)
@@ -491,7 +750,22 @@ func Policies(s Spec) ([]registry.Boundary, error) {
 		{s.Names.Deploy, s.deploy},
 		{s.Names.Project, s.project},
 		{s.Names.Audit, s.audit},
+		{s.Names.RoleAdmin, s.roleAdmin},
+		{s.Names.RoleDeployer, s.roleDeployer},
+		{s.Names.RoleAuditor, s.roleAuditor},
+		{s.Names.ACKControllerIAM, s.controllerIAM},
+		{s.Names.ACKControllerEKS, s.controllerEKS},
+		{s.Names.ACKControllerS3, s.controllerS3},
+		{s.Names.ACKControllerKMS, s.controllerKMS},
+		{s.Names.ACKControllerDynamoDB, s.controllerDynamoDB},
+		{s.Names.ProjectACK, s.projectACK},
+		{s.Names.EmployeeACK, s.employeeACK},
+		{s.Names.ProjectWorkload, s.projectWorkload},
 	} {
+		if sh.name == "" {
+			continue
+		}
+
 		doc, err := sh.build()
 		if err != nil {
 			errs = append(errs, err)

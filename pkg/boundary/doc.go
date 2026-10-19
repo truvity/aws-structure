@@ -20,15 +20,41 @@
 //   - CAPA and EKSAutoNode: infrastructure provisioners; CAPA may pass roles
 //     and create service-linked roles, EKS Auto Mode's roles are allow-all.
 //
+// A second generation of shapes, named by the role, controller and project
+// fields of Names, replaces them; both may be rendered together while an
+// organization moves its roles over:
+//
+//   - RoleAdmin, RoleDeployer, RoleAuditor: the three human boundaries. The
+//     admin and audit documents are the old ones; the admin delegates each
+//     boundary by its exact name, never by a wildcard, and the deployer must
+//     name its roles "<cluster>-<project>.*" from its own tags.
+//   - ACKControllerIAM, -EKS, -S3, -KMS, -DynamoDB: one allowlist per ACK
+//     controller, sized to the platform's own resources (Spec.ACK). For a
+//     project the controller assumes the project's builder and acts as it.
+//   - ProjectACK and EmployeeACK: the boundary of a builder role. One
+//     document for every account and project, keyed on the builder's own
+//     "project" and "cluster" role tags; it may create only roles named for its
+//     project under the one delegated boundary, may not change or remove
+//     those two tags, and has no access to data.
+//   - ProjectWorkload: the boundary of the roles a builder creates for pods:
+//     data actions on the project's own keys, buckets and repositories, and
+//     no IAM. The delegation chain ends here.
+//
+// Spec.LegacyProjectNames renders the transition form of ProjectACK,
+// ProjectWorkload and RoleDeployer, which also accepts the names projects used
+// before the "<cluster>-<project>.<name>" rule.
+//
 // Spec.OrgAdmin (OrgAdminMode) selects, opt-in, a variant of the admin
 // boundary for an organization that uses one admin permission set everywhere:
 // OrgAdminManagement for the management account, OrgAdminMember for every
 // member account. The zero value changes nothing. See OrgAdminMode.
 //
 // Who may delegate to whom comes from the caller's hierarchy (Entry); the
-// package adds nothing but the one special case that the admin boundary
-// delegates to itself and to every boundary of a class by wildcard (the
-// "tech" class, named by Spec.ClassPrefix).
+// package adds only the special cases that the admin boundaries delegate to
+// themselves, and that the old admin boundary (Names.Admin) delegates to
+// every boundary of a class by wildcard (the "tech" class, named by
+// Spec.ClassPrefix). RoleAdmin has no wildcard.
 //
-// The package never writes a boundary name or an ARN partition of its own.
+// The package never writes a boundary name, an ARN partition, an account, a
+// bucket or a platform role of its own: they are inputs of the Spec.
 package boundary

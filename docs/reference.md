@@ -671,7 +671,68 @@ retained), `cost-anomaly-monitor-<account>` (when `PerAccountMonitors`) and
 `assignment-<scope>-<set name>-<principal>`); `sso.DeployLegacyAssignments` registers
 `sso-legacy-assignments-<account>` (children `legacy-assignment-...`).
 `boundary.Policies(boundary.Spec{...})` returns the `registry.Boundary` list in the order admin,
-viewer, default, ACK IAM, CAPA, EKS Auto Mode node, deploy, project, audit.
+viewer, default, ACK IAM, CAPA, EKS Auto Mode node, deploy, project, audit, then the role, controller
+and project shapes below (a generation whose names are empty is left out, `Default` and `EKSAutoNode`
+are always rendered).
+
+### Role, controller and project boundaries
+
+A second generation of shapes, named by `Names.RoleAdmin`, `RoleDeployer`, `RoleAuditor`,
+`ACKControllerIAM`, `ACKControllerEKS`, `ACKControllerS3`, `ACKControllerKMS`, `ACKControllerDynamoDB`,
+`ProjectACK`, `EmployeeACK` and `ProjectWorkload`, all or none. It is additive: the old documents are
+byte for byte what they were and are rendered beside the new ones, so an account can hold both while
+roles move. `Spec` gains `ProjectBucketPrefix`, `ACK` (`ACKScope`) and `LegacyProjectNames`.
+
+| Name | Document | Kind |
+|---|---|---|
+| `RoleAdmin` | the admin document (all `OrgAdmin` variants); delegates itself and each boundary of its hierarchy entry by exact name, no wildcard | human, allow all + denies |
+| `RoleDeployer` | the deploy document + a name rule `<cluster>-<project>.*` from the request tags; delegates what its entry lists | human, allow all + denies |
+| `RoleAuditor` | the audit document | human, allow all + denies |
+| `ACKControllerIAM` | create and manage roles `*-<slug>-*` (`ACK.IAMRoleSlugs`) tagged `services.k8s.aws/namespace=ACK.IAMNamespace`, under the delegated boundary; inline policies only; assume the builders | machine, allowlist |
+| `ACKControllerEKS` | Pod Identity associations, `iam:PassRole` for `IAMRoleSlugs` + `PodIdentityRoleSlugs` roles only (`iam:PassedToService` `StringEqualsIfExists`), two reads; assume the builders | machine, allowlist |
+| `ACKControllerS3` | `s3:*` on the buckets `ACK.Buckets` (not their objects), list buckets; assume the builders | machine, allowlist |
+| `ACKControllerKMS`, `ACKControllerDynamoDB` | reads; assume the builders | machine, allowlist |
+| `ProjectACK`, `EmployeeACK` | builder: see below | machine, allowlist |
+| `ProjectWorkload` | data actions on the project's own keys, buckets and ECR repositories; deny `iam:*` | machine, allowlist |
+
+Delegation: `RoleAdmin` reaches every boundary its entry lists; `ProjectACK`, `EmployeeACK` and `RoleDeployer`
+(final form) reach `ProjectWorkload` only, by exact name (a wildcard would let a project mint a role under a
+boundary that mints roles); `ACKControllerIAM` reaches what its entry lists; `ProjectWorkload` has no IAM, so the
+chain ends. `Validate` refuses a pattern as a delegate, a builder that delegates anything but `ProjectWorkload`
+and an IAM controller or deployer with no delegate.
+
+**Builders.** One document serves every account and project, because it reads the principal's own role tags
+(`${aws:PrincipalTag/project}`, `${aws:PrincipalTag/cluster}`); the roles must carry both. A builder:
+
+- creates a role only named `<cluster>-<project>.*` whose request tags `project` and `cluster` equal its own,
+  bound by the delegated boundary; updates, tags, passes (to Pod Identity only) and deletes only roles that carry
+  its `project` tag; attaches only policies named `<cluster>-<project>.*`, never an AWS-managed one;
+- binds Pod Identity associations only in its own cluster;
+- administers buckets `<ProjectBucketPrefix><cluster>-<project>-*` at bucket level (no object access) and KMS
+  aliases `alias/<cluster>-<project>-*`; creates keys only with `aws:RequestTag/project` equal to its own, and
+  manages keys that carry its tag;
+- is **denied** setting `project` or `cluster` to any other value on `iam:CreateRole` and `iam:TagRole`, and
+  `iam:UntagRole` of either key, because the workload boundary scopes keys, buckets and repositories by the
+  role's `project` tag: a role re-tagged for another project would reach its data;
+- is **denied** `kms:ScheduleKeyDeletion` and `kms:DisableKey`; key policies, grants, object-level S3, SSM,
+  DynamoDB, SQS, users, instance profiles and OIDC providers are not allowed at all.
+
+A project name must not be a hyphen-prefix of another (`x` and `x-y` share `<prefix><cluster>-x-`): KMS aliases and
+buckets cannot hold the `.` that separates roles and policies. `EmployeeACK` is the same document under its own
+name for an employee sandbox, whose `project` tag is the sandbox's own; it has no legacy form.
+
+**Transition.** `LegacyProjectNames: true` renders `ProjectACK` and `ProjectWorkload` that also accept the names
+projects used before the rule (`<cluster>-*<project>-*` for roles and policies, `<prefix><cluster>-*<project>-*`
+for buckets), adds to `ProjectACK` an explicit deny of the platform roles those patterns reach
+(`<cluster>-<slug>-*` for each of `ACK.IAMRoleSlugs`), and drops the deployer's name rule. Rendering the same
+names with `false` is a new version of the same policies: nothing is re-attached. For `RoleAdmin` the transition
+is the hierarchy (list the old boundaries as delegates until nothing uses them).
+
+**Size.** IAM limits a managed policy to 6,144 characters. A test renders every document in every form and
+refuses one over the limit. The largest is the transition builder, about 5.8 thousand characters with short
+names; longer boundary names, a longer bucket prefix or more `ACK` entries use the rest. DynamoDB and SQS are not in
+the builder for that reason and because no project uses them yet; add a reviewed statement with the first user.
+Each document has a golden file in `pkg/boundary/testdata/current`; `go test ./pkg/boundary -update` rewrites them.
 
 ### One admin permission set for the whole organization
 
