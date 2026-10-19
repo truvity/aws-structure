@@ -707,9 +707,10 @@ func TestEmployeeBuilderIgnoresLegacyNames(t *testing.T) {
 }
 
 // A key can be created with tags, which AWS authorizes as kms:TagResource on a
-// key that has no tag yet; and a key without a project tag belongs to no
-// project, so a builder must not claim it by tagging it.
-func TestBuildersTagKeysOnCreateButCannotClaimUntaggedKeys(t *testing.T) {
+// key that has no tag yet, so no Deny may cover untagged keys; tagging one is
+// allowed only with the builder's own project, and a key of another project is
+// never retagged.
+func TestBuildersTagKeysOnCreate(t *testing.T) {
 	for form, s := range map[string]boundary.Spec{"final": currentSpec(), "transition": transitionSpec()} {
 		for _, name := range []string{"bound@tech-project-ack", "bound@tech-employee-ack"} {
 			st := statements(t, docs(t, s)[name])
@@ -729,10 +730,11 @@ func TestBuildersTagKeysOnCreateButCannotClaimUntaggedKeys(t *testing.T) {
 				t.Errorf("%s %s: AllowCreateKey can retag a key that has a project", form, name)
 			}
 
-			claim := st["DenyClaimUntaggedKey"]
-			if claim.Effect != "Deny" || asList(claim.Action)[0] != "kms:TagResource" ||
-				claim.Condition["Null"]["aws:ResourceTag/project"] != "true" {
-				t.Errorf("%s %s: no Deny of kms:TagResource on a key without a project tag: %+v", form, name, claim)
+			// No blanket Deny on untagged keys: AWS authorizes the TagResource
+			// of CreateKey-with-Tags against the new, untagged key, so such a
+			// Deny would refuse every tagged creation.
+			if _, ok := st["DenyClaimUntaggedKey"]; ok {
+				t.Errorf("%s %s: DenyClaimUntaggedKey would block creating a tagged key", form, name)
 			}
 
 			// The ordinary retag of an own key stays.

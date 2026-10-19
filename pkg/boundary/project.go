@@ -160,8 +160,11 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 			// request tag. CreateKey with Tags is also authorized as
 			// kms:TagResource on that key, so it is allowed here too, under the
 			// same request tag and only where the key carries no project tag (a
-			// key of another project is never retagged; DenyClaimUntaggedKey
-			// closes the rest).
+			// key of another project is never retagged). A deny on untagged keys
+			// is not possible here: AWS authorizes that TagResource against the
+			// new, still untagged key. Keeping an untagged key from being
+			// claimed is the account owner's rule: every customer-managed key
+			// carries a project tag.
 			Sid: "AllowCreateKey", Effect: allow, Action: []string{"kms:CreateKey", "kms:TagResource"}, Resource: "*",
 			Condition: map[string]any{
 				condStringEquals: map[string]any{"aws:RequestTag/project": tagProject},
@@ -205,12 +208,6 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 		{
 			Sid: "DenyUntagProjectOrCluster", Effect: deny, Action: "iam:UntagRole", Resource: "*",
 			Condition: map[string]any{"ForAnyValue:StringEquals": map[string]any{"aws:TagKeys": []string{"project", "cluster"}}},
-		},
-		{
-			// A key without a project tag belongs to no project: a builder must
-			// not claim it by tagging it with its own.
-			Sid: "DenyClaimUntaggedKey", Effect: deny, Action: "kms:TagResource", Resource: "*",
-			Condition: map[string]any{"Null": map[string]any{"aws:ResourceTag/project": "true"}},
 		},
 		{
 			Sid: "DenyKeyRetirement", Effect: deny, Action: []string{"kms:ScheduleKeyDeletion", "kms:DisableKey"},
