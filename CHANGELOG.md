@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- **`pkg/boundary`: the builder boundaries (`ProjectACK`, `EmployeeACK`) allow creating a key with tags, and refuse to claim an untagged key.** Creating a KMS key with `Tags` is authorized as `kms:TagResource` on a key that has no tag yet, which the builder document allowed only under `aws:ResourceTag/project`, so tagged creation could be refused. `AllowCreateKey` now also allows `kms:TagResource` under the same `aws:RequestTag/project` condition and only where the key has no `project` tag, so a key of another project is never retagged. New `DenyClaimUntaggedKey` denies `kms:TagResource` on a key without a `project` tag, so a builder cannot take an existing untagged key by tagging it with its own project; retagging a key it already owns is unchanged. Only a caller that names `ProjectACK` or `EmployeeACK` sees the two documents change (the transition builder is 6,062 characters of 6,144). Fix.
+
 ## v0.28.0
 
 - **`pkg/boundary`: the role, controller and project boundaries, beside the old ones.** Additive: a `Spec` that names only the old shapes renders exactly the nine documents it rendered before, byte for byte. New `Names` fields name a second generation, all or nothing (a half-named generation is refused): `RoleAdmin`, `RoleDeployer`, `RoleAuditor`; `ACKControllerIAM`, `ACKControllerEKS`, `ACKControllerS3`, `ACKControllerKMS`, `ACKControllerDynamoDB`; `ProjectACK`, `EmployeeACK`, `ProjectWorkload`. `Default` and `EKSAutoNode` are shared. `Policies` returns the old documents (when named), then the new ones, so both generations can exist in an account while roles move over. New `Spec` fields: `ProjectBucketPrefix`, `ACK` (`ACKScope`: `BuilderRoles`, `IAMNamespace`, `IAMRoleSlugs`, `PodIdentityRoleSlugs`, `Buckets`; every platform-specific name is an input, none is written in the package) and `LegacyProjectNames`.

@@ -164,9 +164,15 @@
     {
       "Sid": "AllowCreateKey",
       "Effect": "Allow",
-      "Action": "kms:CreateKey",
+      "Action": [
+        "kms:CreateKey",
+        "kms:TagResource"
+      ],
       "Resource": "*",
       "Condition": {
+        "Null": {
+          "aws:ResourceTag/project": "true"
+        },
         "StringEquals": {
           "aws:RequestTag/project": "${aws:PrincipalTag/project}"
         }
@@ -262,6 +268,17 @@
             "project",
             "cluster"
           ]
+        }
+      }
+    },
+    {
+      "Sid": "DenyClaimUntaggedKey",
+      "Effect": "Deny",
+      "Action": "kms:TagResource",
+      "Resource": "*",
+      "Condition": {
+        "Null": {
+          "aws:ResourceTag/project": "true"
         }
       }
     },
