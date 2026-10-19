@@ -318,11 +318,53 @@ func TestPulumiStateBucketsStayProtectedInBothVariants(t *testing.T) {
 		doc := adminDoc(t, mode)
 		for _, frag := range []string{
 			`"s3:DeleteBucket"`, "arn:part:s3:::pulumi-state-*", `"cloudtrail:DeleteTrail"`,
-			"role/AWSServiceRoleFor*", "aws-reserved/sso.amazonaws.com",
+			"role/AWSServiceRoleFor*",
 		} {
 			if !strings.Contains(doc, frag) {
 				t.Errorf("mode %q lost %s", mode, frag)
 			}
 		}
+	}
+}
+
+// resourcesOf returns the resources of the statement with the given Sid.
+func resourcesOf(t *testing.T, doc, sid string) []string {
+	t.Helper()
+
+	for _, s := range parse(t, doc).Statement {
+		if s.Sid == sid {
+			return actions(s.Resource)
+		}
+	}
+
+	t.Fatalf("no %s", sid)
+
+	return nil
+}
+
+// In the management account Identity Center writes a permission set's policies
+// onto its reserved roles with the caller's permissions, so that variant must
+// not deny them; the service-linked roles stay denied. Member and default keep
+// both, byte for byte (see the goldens).
+func TestAdminManagementAllowsReservedSSORolesKeepsServiceLinked(t *testing.T) {
+	const sid = "DenyChangePermissionsSetsRoles"
+
+	reserved := "arn:part:iam::*:role/aws-reserved/sso.amazonaws.com/*"
+	serviceLinked := "arn:part:iam::*:role/AWSServiceRoleFor*"
+
+	got := resourcesOf(t, adminDoc(t, boundary.OrgAdminManagement), sid)
+	if !slices.Equal(got, []string{serviceLinked}) {
+		t.Errorf("management %s resources = %v", sid, got)
+	}
+
+	for _, mode := range []boundary.OrgAdminMode{boundary.OrgAdminOff, boundary.OrgAdminMember} {
+		got := resourcesOf(t, adminDoc(t, mode), sid)
+		if !slices.Equal(got, []string{reserved, serviceLinked}) {
+			t.Errorf("mode %q %s resources = %v", mode, sid, got)
+		}
+	}
+
+	if strings.Contains(adminDoc(t, boundary.OrgAdminManagement), "aws-reserved") {
+		t.Error("management admin still mentions the reserved SSO roles")
 	}
 }

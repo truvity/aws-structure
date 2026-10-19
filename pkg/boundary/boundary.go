@@ -345,10 +345,7 @@ func (s *Spec) admin() (string, error) {
 				"iam:DetachRolePolicy", actionPutRoleBoundary, "iam:PutRolePolicy", "iam:TagRole",
 				"iam:UntagRole", "iam:UpdateAssumeRolePolicy", "iam:UpdateRole", "iam:UpdateRoleDescription",
 			},
-			Resource: []string{
-				fmt.Sprintf("arn:%s:iam::*:role/aws-reserved/sso.amazonaws.com/*", s.Partition),
-				fmt.Sprintf("arn:%s:iam::*:role/AWSServiceRoleFor*", s.Partition),
-			},
+			Resource: s.denyPermissionSetRoleResources(),
 		},
 		denyWithoutBoundary("DenyCreateOrChangeWithoutBoundary", s.DelegateARNs(s.Names.Admin)),
 	)
@@ -510,4 +507,24 @@ func Policies(s Spec) ([]registry.Boundary, error) {
 	}
 
 	return out, nil
+}
+
+// denyPermissionSetRoleResources returns the roles DenyChangePermissionsSetsRoles
+// protects: the roles Identity Center reserves for permission sets and the
+// service-linked roles. In the management account Identity Center writes a
+// permission set's policies and boundary onto its reserved roles with the
+// permissions of the caller, so the management variant of the admin boundary
+// leaves the reserved roles out and keeps the service-linked roles (the
+// provisioning path does not change them). Member accounts are provisioned
+// through the service-linked role, so every other variant lists both.
+func (s *Spec) denyPermissionSetRoleResources() any {
+	serviceLinked := fmt.Sprintf("arn:%s:iam::*:role/AWSServiceRoleFor*", s.Partition)
+	if s.OrgAdmin == OrgAdminManagement {
+		return serviceLinked
+	}
+
+	return []string{
+		fmt.Sprintf("arn:%s:iam::*:role/aws-reserved/sso.amazonaws.com/*", s.Partition),
+		serviceLinked,
+	}
 }
