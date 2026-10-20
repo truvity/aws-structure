@@ -36,12 +36,12 @@ that proves a change cannot cut off the principal that would repair it.
 
 ## Names are the caller's
 
-Account names, emails, regions, groups and policies are inputs. The
-components, when they land, name their children after what they are, and
-those names are API because a URN is made of them.
+Account names, emails, regions, groups, boundary names and policies are
+inputs. The components name their children after what they are, and those
+names are API because a URN is made of them.
 
 ## Nothing here touches a real account in CI
 
-Tests parse text; the engine will run against Pulumi mocks. A test that
+Tests parse text and run the engine against Pulumi mocks. A test that
 needs an account is a test that holds a credential, and a public
 repository should hold none.
