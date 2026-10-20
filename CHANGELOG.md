@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.28.2
 
 - **`pkg/engine/sso`: the permissions boundary attachment of a permission set is always `RetainOnDelete`.** `aws:ssoadmin/PermissionsBoundaryAttachment` has only ForceNew properties and its id is the permission set's ARN, so renaming the resource or changing the boundary name is a replace whose delete removes whatever boundary the set holds, including the one the create just put (a window with no boundary until the next provisioning). The delete is now a state-only forget, so a replace can no longer strip a live boundary. Nothing changes in AWS; the option is recorded on the next update of the stack. To remove a boundary on purpose, call `aws sso-admin delete-permissions-boundary-from-permission-set`, provision the set to its accounts, and drop the resource from the program. A caller that carries its own transform for this can drop it, but a state entry created before this release gets the flag only once the program runs with it.
 
