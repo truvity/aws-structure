@@ -1,8 +1,8 @@
 # Contributing
 
 Thanks for looking. This repository holds the schema of an AWS
-organization's structure and, as they land, the Pulumi components,
-preflight and tooling that apply it.
+organization's structure and the Pulumi components, preflight and tooling
+that apply it.
 
 ## Before you open a pull request
 
@@ -32,8 +32,8 @@ them.
 - A refusal is a decision. A new refusal, or the relaxing of one (for
   example attaching SCPs), gets a page under `docs/decisions/` and a
   CHANGELOG entry.
-- A component's child names, once components exist, are API. Renaming one
-  is a `Breaking:` entry and needs an alias.
+- A component's child names are API. Renaming one is a `Breaking:` entry
+  and needs an alias.
 - Tests never reach an AWS account. A test that needs one does not belong
   here.
 - Commits are small and say why. The default branch is `master`; pull

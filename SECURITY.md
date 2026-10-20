@@ -26,7 +26,7 @@ Only the latest release is supported with security updates.
 - The organization is looked up, never created, modified or deleted, by
   this module in v1.
 - It holds no credentials. AWS credentials belong to the Pulumi program
-  that will call the engine; the registry parser reads a file and nothing
+  that calls the engine; the registry parser reads a file and nothing
   else, and no credential belongs in a registry file.
 - Policy documents in a registry are validated as JSON and against AWS's
   size limits, not for what they allow. Reviewing what a policy permits is

@@ -383,11 +383,37 @@ Children (all registered under the component with Provider):
 | Permission set | `aws:ssoadmin/permissionSet:PermissionSet` | `<c>-set` | `Set.Name`; `Set.SessionDuration` and `Set.Description` only when non-empty. **Protected and retained on delete** |
 | Managed policy | `aws:ssoadmin/managedPolicyAttachment:ManagedPolicyAttachment` | `<c>-managed-policy-<i>` | one per `Set.ManagedPolicies`, in order; depends on the set |
 | Inline policy | `aws:ssoadmin/permissionSetInlinePolicy:PermissionSetInlinePolicy` | `<c>-inline-policy` | when `Set.InlinePolicy` is non-empty; depends on the set |
-| Boundary | `aws:ssoadmin/permissionsBoundaryAttachment:PermissionsBoundaryAttachment` | `<c>-boundary` | when `BoundaryPolicyName` is non-empty: a customer managed policy reference by name; depends on the set |
+| Boundary | `aws:ssoadmin/permissionsBoundaryAttachment:PermissionsBoundaryAttachment` | `<c>-boundary` | when `BoundaryPolicyName` is non-empty: a customer managed policy reference by name; depends on the set. **Retained on delete** (see below) |
 
 `Set.Includes` is not read: whoever builds the assignments expands it. Only the
-permission set is protected and retained; deleting one revokes everyone's
-access, and the attachments are recreated from it.
+permission set is protected; deleting one revokes everyone's access, and the
+attachments are recreated from it. The permission set and the boundary
+attachment are both retained on delete, for different reasons (below).
+
+**The boundary attachment is always `RetainOnDelete`.** The attachment's id is
+the permission set's ARN and every one of its properties is ForceNew. Renaming
+the resource or changing `BoundaryPolicyName` is therefore a replace whose
+create and delete address the same object in AWS, and the delete removes
+whatever boundary the set holds at that moment, including the one the create
+just put: the set would have no boundary until the next provisioning. With
+retain-on-delete the delete only forgets the state entry, so a replace can
+never strip a live boundary. The option is not configurable.
+
+- **Changing the boundary's name** is an in-place overwrite in AWS (the create
+  puts the new reference on the set), and the preview shows a replace. That is
+  expected.
+- **Removing a boundary on purpose** is two steps outside the program: call
+  `aws sso-admin delete-permissions-boundary-from-permission-set`, provision
+  the set to its accounts, then drop `BoundaryPolicyName` (or the set) from the
+  program. The retained delete leaves the state clean.
+- **A state entry created by an older release** gets the flag only once the
+  program has run with this one: update the stack once before renaming or
+  replacing anything. A caller that carried its own transform for this can
+  drop it.
+- Changes to the boundary *document* are a policy-version update of the
+  customer-managed policy, never a replace of the attachment. Boundaries are
+  resolved by name in each account (see
+  [One admin permission set](#one-admin-permission-set-for-the-whole-organization)).
 
 `Names` receives a `SetChild{Component, Kind, Name, Index}` (`Index` is the
 policy's position for `SetKindManagedPolicy`). The names it returns are part of
@@ -695,6 +721,13 @@ roles move. `Spec` gains `ProjectBucketPrefix`, `ACK` (`ACKScope`) and `LegacyPr
 | `ProjectACK`, `EmployeeACK` | builder: see below | machine, allowlist |
 | `ProjectWorkload` | data actions on the project's own keys, buckets and ECR repositories; deny `iam:*` | machine, allowlist |
 
+**Names.** The package fixes no name. Every boundary name starts with `Spec.Prefix`, and the documents deny
+editing any policy named `Spec.Prefix` + `*` (except in the management variant of the admin, below). Telling
+the generations apart in the name (for example one sub-prefix for the human role boundaries and another for the
+machine tier) is the caller's scheme: `Spec.ClassPrefix` and its wildcard apply only to the old `Names.Admin`,
+which delegates to the whole class. `RoleAdmin` and every other new shape delegate by exact name only, so a
+boundary added to a hierarchy entry is a reviewed edit and a boundary nobody listed is out of reach.
+
 Delegation: `RoleAdmin` reaches every boundary its entry lists; `ProjectACK`, `EmployeeACK` and `RoleDeployer`
 (final form) reach `ProjectWorkload` only, by exact name (a wildcard would let a project mint a role under a
 boundary that mints roles); `ACKControllerIAM` reaches what its entry lists; `ProjectWorkload` has no IAM, so the
@@ -771,7 +804,7 @@ policy above):
 | Action | Management account (`OrgAdminManagement`) | Member account (`OrgAdminMember`) |
 |---|---|---|
 | `organizations:*`, `account:*`, `sso:*`, `sso-directory:*`, `identitystore:*` | allowed (inline policy and boundary both allow) | denied by the boundary, except the carve-outs below |
-| edit or delete `pb@*` policies (`iam:CreatePolicyVersion`, `DeletePolicy`, ...) | allowed (no boundary-edit deny; IAMFullAccess allows) | denied (`DenyBoundaryPolicyEdit`) |
+| edit or delete a policy named `Spec.Prefix` + `*` (`iam:CreatePolicyVersion`, `DeletePolicy`, ...) | allowed (no boundary-edit deny; IAMFullAccess allows) | denied (`DenyBoundaryPolicyEdit`) |
 | `iam:*` | allowed, except the deny list: SSO and service-linked roles, roles and users without a delegated boundary, boundary removal | the same, as today |
 
 Carve-outs of the member deny, the reads that PowerUserAccess (v12) grants outside its `NotAction`

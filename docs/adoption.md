@@ -9,9 +9,9 @@ go get github.com/truvity/aws-structure
 `pkg/registry` has no cloud dependency. Write the registry in your private
 estate, load it with `registry.Load` (or `Parse`) in a test, and let CI hold
 it to the schema. Record ids (`id:` on OUs and accounts) as you adopt, so
-the engine, when it lands, imports rather than creates.
+the engine imports rather than creates.
 
-## Adopting an existing organization (when the engine lands)
+## Adopting an existing organization
 
 Import-first, one step at a time, and never all at once.
 

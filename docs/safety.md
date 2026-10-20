@@ -42,6 +42,12 @@ is the lockout check 0002 asks for, and activation is its own decision.
 - Accounts, OUs and permission sets are `protect`ed and retained on delete
   (not closed) by `pkg/engine/org` and `pkg/engine/sso`: `protect` is
   defence in depth behind the preflight, not a substitute for it.
+- A permission set's boundary attachment is always `RetainOnDelete`
+  (`pkg/engine/sso`). Its id is the set's ARN and all its properties are
+  ForceNew, so a replace (a renamed resource, a changed boundary name) would
+  delete the boundary the create had just put; the delete is now a state-only
+  forget. Removing a boundary on purpose is a manual step, see
+  [reference.md](reference.md#truvityaws-structurepermissionset).
 - Policies are dormant. See [0002](decisions/0002-safety.md).
 
 ## What no guard covers
