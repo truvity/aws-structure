@@ -10,7 +10,7 @@ build:
     go build ./...
 
 # Run the tests. They never reach an AWS account: the registry is parsed
-# from text and the engine, when it lands, runs against Pulumi mocks.
+# from text and the engine runs against Pulumi mocks.
 test:
     go test ./...
 
