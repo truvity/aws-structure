@@ -734,6 +734,28 @@ names; longer boundary names, a longer bucket prefix or more `ACK` entries use t
 the builder for that reason and because no project uses them yet; add a reviewed statement with the first user.
 Each document has a golden file in `pkg/boundary/testdata/current`; `go test ./pkg/boundary -update` rewrites them.
 
+### The runners boundary (`Grun`)
+
+`Names.Grun` names one more boundary, optional and independent of both generations (leave it empty to render
+none; naming it changes no other document). It bounds the roles the self-hosted runners stack
+([cdk-github-runners](https://github.com/CloudSnorkel/cdk-github-runners)) creates, whose Step Functions state
+machines start ECS tasks and so must pass the task and execution roles, which `Default` and `Project` deny.
+`Spec.Grun` (`GrunScope`) is required with it:
+
+| Field | Meaning |
+|---|---|
+| `RolePrefix` | the name prefix of the stack's roles, such as `grun-`: the only roles that may be passed |
+| `PassedToServices` | the services a role may be passed to (`iam:PassedToService`), such as `ecs-tasks.amazonaws.com` |
+| `ServiceLinkedRoles` | the services whose service-linked role may be created (`iam:AWSServiceName`), such as `ecs.amazonaws.com`; empty allows none |
+
+The document is allow all, then denies: IAM writes, except `iam:PassRole` on `role/<RolePrefix>*` and only to
+`PassedToServices`, and except `iam:CreateServiceLinkedRole` for `ServiceLinkedRoles`; editing a boundary policy;
+removing a boundary. Both exceptions are carved out by the condition key that scopes them (an absent key matches
+`StringNotEquals`, so every other `iam:Create*` stays denied). There is no `iam:CreateRole`: the stack's roles are
+created by CloudFormation as the deploying human role, so the boundary is a leaf in the hierarchy and delegates
+nothing. `Validate` requires a hierarchy entry for it, refuses delegates on it, and refuses an empty scope. Its
+golden file is `pkg/boundary/testdata/grun.json`.
+
 ### One admin permission set for the whole organization
 
 Identity Center permission sets are organization-wide, and the customer-managed boundary a set

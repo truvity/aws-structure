@@ -42,6 +42,10 @@ type Names struct {
 	// is the same for an employee sandbox. ProjectWorkload bounds the roles a
 	// builder creates for the project's pods.
 	ProjectACK, EmployeeACK, ProjectWorkload string
+	// Grun is the boundary of the roles the self-hosted runners stack
+	// (cdk-github-runners) creates; see GrunScope. Optional and independent of
+	// both generations: leave it empty to render none. Needs Spec.Grun.
+	Grun string
 }
 
 // ACKScope names the platform's own ACK-managed resources: what the
@@ -113,6 +117,8 @@ type Spec struct {
 	// (OrgAdminOff) is the admin boundary every existing caller gets. See
 	// OrgAdminMode.
 	OrgAdmin OrgAdminMode
+	// Grun scopes the Grun boundary. Required when Names.Grun is set.
+	Grun GrunScope
 }
 
 // legacyNames returns the legacy generation by field name, in a stable order.
@@ -205,6 +211,12 @@ func (s *Spec) Validate() error {
 			s.Names.ProjectACK, s.Names.EmployeeACK)
 	}
 
+	if s.Names.Grun != "" {
+		needEntries = append(needEntries, s.Names.Grun)
+	}
+
+	errs = append(errs, s.validateGrun()...)
+
 	for _, n := range needEntries {
 		if n != "" && !have[n] {
 			errs = append(errs, fmt.Errorf("spec: Hierarchy has no entry for %q", n))
@@ -255,7 +267,7 @@ func (s *Spec) validateDistinctNames() []error {
 
 	seen := map[string]string{}
 
-	all := append([][2]string{{"Names.Default", s.Names.Default}, {"Names.EKSAutoNode", s.Names.EKSAutoNode}},
+	all := append([][2]string{{"Names.Default", s.Names.Default}, {"Names.EKSAutoNode", s.Names.EKSAutoNode}, {"Names.Grun", s.Names.Grun}},
 		append(s.legacyNames(), s.currentNames()...)...)
 
 	for _, n := range all {
@@ -282,6 +294,7 @@ func (s *Spec) leaves() map[string]bool {
 		s.Names.RoleAuditor: true, s.Names.ProjectWorkload: true,
 		s.Names.ACKControllerEKS: true, s.Names.ACKControllerS3: true,
 		s.Names.ACKControllerKMS: true, s.Names.ACKControllerDynamoDB: true,
+		s.Names.Grun: true,
 	}
 	delete(leaves, "") // an empty name is reported by the required-names check
 
@@ -722,7 +735,7 @@ func (s *Spec) auditAs(name string) (string, error) {
 // default, ACK IAM, CAPA, EKS Auto Mode node, deploy, project, audit), then the
 // role/controller/project shapes (role admin, role deployer, role auditor, the
 // five ACK controllers, the project builder, the employee builder, the project
-// workload). A generation whose names are all empty is left out, except Default
+// workload), then Grun. A generation whose names are all empty is left out, except Default
 // and EKSAutoNode, which are always rendered. The viewer is deprecated (use the
 // default) and kept for existing roles; it is the default's document.
 func Policies(s Spec) ([]registry.Boundary, error) {
@@ -761,6 +774,7 @@ func Policies(s Spec) ([]registry.Boundary, error) {
 		{s.Names.ProjectACK, s.projectACK},
 		{s.Names.EmployeeACK, s.employeeACK},
 		{s.Names.ProjectWorkload, s.projectWorkload},
+		{s.Names.Grun, s.grun},
 	} {
 		if sh.name == "" {
 			continue
