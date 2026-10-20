@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- **`pkg/engine/sso`: the permissions boundary attachment of a permission set is always `RetainOnDelete`.** `aws:ssoadmin/PermissionsBoundaryAttachment` has only ForceNew properties and its id is the permission set's ARN, so renaming the resource or changing the boundary name is a replace whose delete removes whatever boundary the set holds, including the one the create just put (a window with no boundary until the next provisioning). The delete is now a state-only forget, so a replace can no longer strip a live boundary. Nothing changes in AWS; the option is recorded on the next update of the stack. To remove a boundary on purpose, call `aws sso-admin delete-permissions-boundary-from-permission-set`, provision the set to its accounts, and drop the resource from the program. A caller that carries its own transform for this can drop it, but a state entry created before this release gets the flag only once the program runs with it.
+
 ## v0.28.1
 
 - **`pkg/boundary`: the builder boundaries (`ProjectACK`, `EmployeeACK`) allow creating a key with tags.** Creating a KMS key with `Tags` is authorized as `kms:TagResource` on a key that has no tag yet, which the builder document allowed only under `aws:ResourceTag/project`, so tagged creation could be refused. `AllowCreateKey` now also allows `kms:TagResource` under the same `aws:RequestTag/project` condition and only where the key has no `project` tag, so a key of another project is never retagged. There is deliberately no Deny on untagged keys: AWS authorizes the tagging of `CreateKey` against the new, still untagged key, so such a Deny would block every tagged creation. Keeping an untagged key from being claimed by tagging it with a builder's project is the account owner's rule: every customer-managed key carries a `project` tag (`platform` for the platform's own). Only a caller that names `ProjectACK` or `EmployeeACK` sees the two documents change. Fix.
