@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.29.0
 
 - **`pkg/boundary`: `Names.Grun`, the boundary of the self-hosted runners stack's roles.** Additive and optional: a `Spec` that does not set `Names.Grun` renders exactly the documents it rendered before, byte for byte. cdk-github-runners' Step Functions and Lambda roles must `iam:PassRole` the ECS task and execution roles, which `Default` and `Project` deny; the new boundary is allow all, then denies IAM writes except two. New `Spec.Grun` (`GrunScope`: `RolePrefix`, `PassedToServices`, `ServiceLinkedRoles`), required with `Names.Grun`: `iam:PassRole` is allowed only on `role/<RolePrefix>*` and only to `PassedToServices` (`iam:PassedToService`), and `iam:CreateServiceLinkedRole` only for `ServiceLinkedRoles` (`iam:AWSServiceName`); there is no `iam:CreateRole` (the stack's roles are created by the deploying human role), editing a boundary policy and removing a boundary are denied. It is a leaf: `Validate` refuses delegates on it, an empty scope, and a missing hierarchy entry; add it to the delegates of `RoleAdmin` to let the admin attach it. `Policies` renders it last. Golden file `pkg/boundary/testdata/grun.json`. Additive.
 
