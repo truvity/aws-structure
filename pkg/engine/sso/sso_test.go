@@ -249,8 +249,15 @@ func TestSetProtectionAndDependencies(t *testing.T) {
 		}
 
 		isSet := c.name == "ps-a-set"
-		if c.protect != isSet || c.retain != isSet {
-			t.Errorf("%s: protect=%v retain=%v, want both %v", c.name, c.protect, c.retain, isSet)
+		if c.protect != isSet {
+			t.Errorf("%s: protect=%v, want %v", c.name, c.protect, isSet)
+		}
+
+		// The set and the boundary attachment are retained on delete; the
+		// other children are not (see TestSetBoundaryAttachmentIsRetained).
+		wantRetain := isSet || c.name == "ps-a-boundary"
+		if c.retain != wantRetain {
+			t.Errorf("%s: retain=%v, want %v", c.name, c.retain, wantRetain)
 		}
 
 		if isSet != (len(c.dependsOn) == 0) {
@@ -259,6 +266,36 @@ func TestSetProtectionAndDependencies(t *testing.T) {
 
 		if !isSet && !strings.HasSuffix(c.dependsOn[0], "::ps-a-set") {
 			t.Errorf("%s: depends on %v, not the set", c.name, c.dependsOn)
+		}
+	}
+}
+
+// TestSetBoundaryAttachmentIsRetained: the attachment's id is the permission
+// set's ARN, so a replace deletes the boundary the create just put. Retaining
+// on delete makes the delete a state-only forget. Without a boundary there is
+// no attachment to retain.
+func TestSetBoundaryAttachmentIsRetained(t *testing.T) {
+	regs, err := runSet(t, fullSet(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b, ok := by(regs)["ps-a-boundary"]
+	if !ok {
+		t.Fatal("no boundary attachment registered")
+	}
+
+	if b.typ != "aws:ssoadmin/permissionsBoundaryAttachment:PermissionsBoundaryAttachment" {
+		t.Errorf("type %q", b.typ)
+	}
+
+	if !b.retain {
+		t.Error("boundary attachment is not RetainOnDelete")
+	}
+
+	for _, c := range children(regs) {
+		if c.name != "ps-a-boundary" && c.name != "ps-a-set" && c.retain {
+			t.Errorf("%s: retain=true, want it on the set and the boundary only", c.name)
 		}
 	}
 }

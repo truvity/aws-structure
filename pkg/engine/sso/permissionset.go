@@ -281,6 +281,21 @@ func NewPermissionSet(ctx *pulumi.Context, name string, args *PermissionSetArgs,
 	}
 
 	if args.BoundaryPolicyName != "" {
+		// The boundary attachment is RetainOnDelete for good. Its id is the
+		// permission set's ARN and every property is ForceNew, so changing the
+		// attachment (a rename of the resource, a changed boundary name) is a
+		// replace whose create and delete address the SAME object in AWS. The
+		// delete calls DeletePermissionsBoundaryFromPermissionSet, which
+		// removes whatever boundary the set holds at that moment, including
+		// the one the create just put. With the retain option the delete only
+		// forgets the state entry, so a replace can never strip a live
+		// boundary. The create-then-delete order (DeleteBeforeReplace false)
+		// is Pulumi's default and stays: the create overwrites in place.
+		//
+		// To remove a boundary on purpose, run
+		//   aws sso-admin delete-permissions-boundary-from-permission-set
+		// (then provision the set to its accounts) and drop the resource from
+		// the program; the retained delete leaves the state clean.
 		if _, err := ssoadmin.NewPermissionsBoundaryAttachment(ctx, child(SetKindBoundary, 0), &ssoadmin.PermissionsBoundaryAttachmentArgs{
 			InstanceArn:      args.InstanceARN,
 			PermissionSetArn: ps.Arn,
@@ -289,7 +304,7 @@ func NewPermissionSet(ctx *pulumi.Context, name string, args *PermissionSetArgs,
 					Name: pulumi.String(args.BoundaryPolicyName),
 				},
 			},
-		}, opt(dep)...); err != nil {
+		}, opt(dep, pulumi.RetainOnDelete(true), pulumi.DeleteBeforeReplace(false))...); err != nil {
 			return nil, fmt.Errorf("attach boundary %s to %s: %w", args.BoundaryPolicyName, args.Set.Name, err)
 		}
 	}
