@@ -40,6 +40,12 @@
 //     data actions on the project's own keys, buckets and repositories, and
 //     no IAM. The delegation chain ends here.
 //
+// Grun, named by Names.Grun and optional beside both generations, is the
+// boundary of the roles the self-hosted runners stack (cdk-github-runners)
+// creates: everything except IAM writes, with two exceptions, passing the
+// stack's own roles (Spec.Grun.RolePrefix) to the listed services and creating
+// the listed service-linked roles. It cannot create a role or a user.
+//
 // Spec.LegacyProjectNames renders the transition form of ProjectACK,
 // ProjectWorkload and RoleDeployer, which also accepts the names projects used
 // before the "<cluster>-<project>.<name>" rule.
