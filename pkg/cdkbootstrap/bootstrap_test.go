@@ -1,11 +1,18 @@
 package cdkbootstrap_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/truvity/aws-structure/pkg/cdkbootstrap"
 )
+
+// policyARN spells an AWS managed policy's ARN; the partition is an input, as
+// in the code under test.
+func policyARN(partition, name string) string {
+	return fmt.Sprintf("arn:%s:iam::aws:policy/%s", partition, name)
+}
 
 func good() cdkbootstrap.Bootstrap {
 	return cdkbootstrap.Bootstrap{
@@ -58,7 +65,7 @@ func TestBootstrapValidate(t *testing.T) {
 	b := good()
 	b.Qualifier = strings.Repeat("a", 10)
 	b.TrustedAccounts = []string{account}
-	b.ExecutionPolicies = []string{"arn:aws-cn:iam::aws:policy/PowerUserAccess"}
+	b.ExecutionPolicies = []string{policyARN("aws-cn", "PowerUserAccess")}
 
 	if err := b.Validate(); err != nil {
 		t.Errorf("a ten-character qualifier with trusted accounts and policies is refused: %v", err)
@@ -93,7 +100,7 @@ func TestParameters(t *testing.T) {
 	want := map[string]string{
 		"Qualifier":                       "app",
 		"InputPermissionsBoundary":        "pb@tech-deploy",
-		"CloudFormationExecutionPolicies": "arn:aws:iam::aws:policy/AdministratorAccess",
+		"CloudFormationExecutionPolicies": policyARN("aws", "AdministratorAccess"),
 		"TrustedAccounts":                 "",
 	}
 
@@ -107,11 +114,11 @@ func TestParameters(t *testing.T) {
 		t.Errorf("parameters = %v", got)
 	}
 
-	b.ExecutionPolicies = []string{"arn:aws:iam::aws:policy/A", "arn:aws:iam::aws:policy/B"}
+	b.ExecutionPolicies = []string{policyARN("aws", "A"), policyARN("aws", "B")}
 	b.TrustedAccounts = []string{strings.Repeat("2", 12), strings.Repeat("3", 12)}
 
 	got = b.Parameters("aws")
-	if got["CloudFormationExecutionPolicies"] != "arn:aws:iam::aws:policy/A,arn:aws:iam::aws:policy/B" ||
+	if got["CloudFormationExecutionPolicies"] != policyARN("aws", "A")+","+policyARN("aws", "B") ||
 		got["TrustedAccounts"] != strings.Repeat("2", 12)+","+strings.Repeat("3", 12) {
 		t.Errorf("parameters = %v", got)
 	}

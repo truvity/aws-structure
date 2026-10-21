@@ -2,6 +2,7 @@ package cdkbootstrap_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -151,7 +152,7 @@ func TestStack(t *testing.T) {
 
 	params, _ := in["parameters"].(map[string]any)
 	if params["Qualifier"] != "app" || params["InputPermissionsBoundary"] != "pb@tech-deploy" ||
-		params["CloudFormationExecutionPolicies"] != "arn:aws:iam::aws:policy/AdministratorAccess" || params["TrustedAccounts"] != "" {
+		params["CloudFormationExecutionPolicies"] != fmt.Sprintf("arn:%s:iam::aws:policy/AdministratorAccess", "aws") || params["TrustedAccounts"] != "" {
 		t.Errorf("parameters = %v", params)
 	}
 
