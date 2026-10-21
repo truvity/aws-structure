@@ -9,6 +9,8 @@ import (
 
 	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
+
+	"github.com/truvity/aws-structure/pkg/engine/iam"
 )
 
 // accessRole is the role AWS creates in every account an organization makes,
@@ -42,6 +44,10 @@ type Fleet struct {
 	// CloudTrail and GuardDuty are not deployed to them (they still get
 	// their boundary policies).
 	Skip map[string]bool
+
+	// iam are the AccountIAM components IAM registered, by account name; see
+	// IAMComponent.
+	iam map[string]*iam.AccountIAM
 }
 
 // Validate reports every problem with f at once, or returns nil.
@@ -188,3 +194,8 @@ func (f *Fleet) rootProvider(ctx *pulumi.Context, name, region string) (*aws.Pro
 		Profile: pulumi.String(f.RootProfile),
 	})
 }
+
+// IAMComponent returns the AccountIAM that IAM registered for a member account,
+// or nil before IAM ran or for an account it did not register one for. A
+// resource that needs the account's boundary policies depends on it.
+func (f *Fleet) IAMComponent(account string) *iam.AccountIAM { return f.iam[account] }

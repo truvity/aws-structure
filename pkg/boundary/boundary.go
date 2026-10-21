@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/truvity/aws-structure/pkg/cdkbootstrap"
 	"github.com/truvity/aws-structure/pkg/registry"
 	"github.com/truvity/aws-structure/policy"
 )
@@ -135,6 +136,12 @@ type Spec struct {
 	// an allow list, so that a component cannot make itself reachable from a
 	// boundary its author chose. Default: Names.RoleAdmin alone.
 	ExtraDelegators []string
+	// CDKBootstraps are the CDK bootstraps deployed with these boundaries: one
+	// per CDK app (qualifier), each carrying the boundary it names as its
+	// DeployBoundary, which must be a boundary of this Spec and is normally an
+	// Extra with Delegates. The documents are not changed by them; Validate
+	// checks them, and pkg/fleet deploys them. Optional.
+	CDKBootstraps []cdkbootstrap.Bootstrap
 	// Account is the name of the account the documents are rendered for. An
 	// Extra whose Accounts is set and does not name it is left out, with its
 	// edges. Empty renders every Extra, whatever its Accounts.
@@ -239,6 +246,7 @@ func (s *Spec) Validate() error {
 
 	errs = append(errs, s.validateGrun()...)
 	errs = append(errs, s.validateExtras()...)
+	errs = append(errs, s.validateCDKBootstraps()...)
 
 	for _, n := range needEntries {
 		if n != "" && !have[n] {
