@@ -154,7 +154,7 @@ armed; the first release and every minor and major are hand-cut tags.
 
 `policy/` is its own Go module, versioned by `policy/vX.Y.Z` tags. Such a
 tag is not a `v*` tag and starts no workflow: the tag is the release, and
-the CHANGELOG section of that name is its notes.
+policy/CHANGELOG.md is its notes.
 
 ## Licence
 
