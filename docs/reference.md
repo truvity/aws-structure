@@ -152,6 +152,56 @@ and `Baseline.PasswordPolicy`, `AuditorRole` or `Boundaries`, which this
 component does not implement (refused by name rather than ignored): they belong
 to `pkg/engine/iam`.
 
+## `pkg/cdkbootstrap`, `pkg/engine/cdkbootstrap`
+
+The CDK bootstrap of an AWS CDK app, owned by the organization rather than by the app. One bootstrap per CDK app,
+keyed by the app's **qualifier** (the one it sets in `DefaultStackSynthesizer`): the roles and buckets are named
+`cdk-<qualifier>-*`, so two apps in one account and region share nothing, and each bootstrap's roles carry that
+app's deploy boundary alone.
+
+**The template.** `pkg/cdkbootstrap/template/bootstrap-template.yaml` is the file the `aws-cdk` npm package ships,
+byte for byte, with the package's LICENSE and NOTICE (Apache License, Version 2.0). `template/VERSION` is the
+release, tracked by Renovate (`renovate.json`, a regex manager; the pull request is not automerged), and
+`template/PROVENANCE` records the tarball URL, its sha512 integrity and the sha256 of the template. A bump of
+`VERSION` fails `TestVendoredTemplateMatchesProvenance` until `hack/update-cdk-bootstrap.sh` has fetched that
+release (it checks the tarball against the registry's integrity hash first); read the diff of the template, it is
+the stack deployed to every bootstrapped account.
+
+**The transformation.** CDK's template applies its `InputPermissionsBoundary` parameter to the CloudFormation
+execution role alone; the file and image publishing, lookup and deployment action roles get none, and an account
+whose admin boundary refuses a role created without a boundary cannot be bootstrapped. `cdkbootstrap.Transform`
+copies the execution role's `PermissionsBoundary` (a condition on the parameter, so a stack with no boundary is
+still valid) onto every `AWS::IAM::Role` and `AWS::IAM::User` that has none, and returns JSON; `Render` does it to
+the vendored template. It reads YAML with the short-form functions (`!Ref`, `!Sub`, `!If`, `!GetAtt`, ...) as well
+as the long form, and refuses a template whose execution role or its boundary is missing. The tests hold the output
+against the upstream template (the only difference is `PermissionsBoundary` on four roles) and against a reviewed
+template (`pkg/cdkbootstrap/testdata/reference.json`) that a CDK `CfnInclude` of the same release produced.
+
+**The description.** `cdkbootstrap.Bootstrap`, and `boundary.Spec.CDKBootstraps []cdkbootstrap.Bootstrap`:
+
+| Field | Rule |
+| --- | --- |
+| `Qualifier` | 1 to 10 lowercase letters and digits (CDK's rule) |
+| `DeployBoundary` | a boundary of the `Spec` (a built-in, a `Hierarchy` entry or an `Extra`; normally an `Extra` with `Delegates`, so the roles the stack creates are bounded by the app's runtime boundary), rendered in every account of the bootstrap. Passed to the stack as `InputPermissionsBoundary`, so every role of the bootstrap carries it |
+| `Accounts`, `Regions` | required; account names, regions |
+| `ExecutionPolicies` | policy ARNs of the execution role; empty is `AdministratorAccess` of the fleet's partition, which `DeployBoundary` caps |
+| `TrustedAccounts` | account ids whose CDK CLI may deploy through the bootstrap; empty is the account alone |
+
+`boundary.Spec.Validate` refuses a qualifier in the wrong shape, two bootstraps of one (qualifier, account, region),
+and a `DeployBoundary` that is not a boundary of the Spec. The documents `Policies` renders do not change.
+
+**The deployment.** `truvity:aws-structure:CDKBootstrap` creates one `aws:cloudformation/stack:Stack`, named
+`CDKToolkit-<qualifier>` in the account, with `CAPABILITY_NAMED_IAM` and the parameters `Qualifier`,
+`InputPermissionsBoundary`, `CloudFormationExecutionPolicies` and `TrustedAccounts`. The child is named `<c>-stack`
+(`Names` overrides it). The caller passes the provider and `DependsOn`, since the boundary policy must exist before
+the stack creates a role under it. `Fleet.CDKBootstraps(ctx, logger, CDKBootstrapsArgs{Bootstraps})` does it for a
+fleet: one component `cdkbootstrap-<qualifier>-<account>-<region>` per bootstrap, account and region, one provider
+`cdkbootstrap-<account>-<region>` per account and region, each stack depending on the account's `AccountIAM`. Run
+`Fleet.IAM` first (`Fleet.IAMComponent(account)`); an account that is not a member of the fleet is refused.
+
+Deleting the stack deletes the roles and keeps the staging bucket and the container repository (CDK retains them):
+remove the bucket before bootstrapping the qualifier again in that account.
+
 ## `pkg/engine/iam`
 
 `truvity:aws-structure:AccountIAM` deploys the IAM controls of one account:
@@ -890,9 +940,10 @@ management-variant update needs no waiver. Replacing a permission set is still r
 ## `pkg/fleet`
 
 `fleet.Fleet{...}` with `Providers(ctx, prefix, regions)` (`<prefix>-<account>-<region>`),
-`Baseline`, `Trail`, `GuardDuty`, `IAM`; `fleet.DeployUnits`. Component names are
+`Baseline`, `Trail`, `GuardDuty`, `IAM`, `CDKBootstraps`; `fleet.DeployUnits`. Component names are
 `baseline-<account>`, `cloudtrail-<account>`, `guardduty-<account>-<region>`, `iam-<account>`,
-`iam-root`, `orgunit-<ou>`; the IAM boundary providers are `provider-<account>`.
+`iam-root`, `orgunit-<ou>`, `cdkbootstrap-<qualifier>-<account>-<region>`; the IAM boundary providers are
+`provider-<account>`, the CDK bootstrap providers `cdkbootstrap-<account>-<region>`.
 
 ## `pkg/bootstrap`
 

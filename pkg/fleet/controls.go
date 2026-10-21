@@ -280,9 +280,16 @@ func (f *Fleet) IAM(ctx *pulumi.Context, logger *slog.Logger, a IAMArgs) error {
 			args.AuditorRole = role
 		}
 
-		if _, err := iam.New(ctx, "iam-"+account, args); err != nil {
+		comp, err := iam.New(ctx, "iam-"+account, args)
+		if err != nil {
 			return fmt.Errorf("deploy account IAM controls (%s): %w", account, err)
 		}
+
+		if f.iam == nil {
+			f.iam = map[string]*iam.AccountIAM{}
+		}
+
+		f.iam[account] = comp
 	}
 
 	return nil

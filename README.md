@@ -17,10 +17,10 @@ engine, preflight, drift) and on [k8s](https://github.com/truvity/k8s)
 | Go module `github.com/truvity/aws-structure/policy`: a typed IAM policy document, standard library only | `go get github.com/truvity/aws-structure/policy` ([policy/README.md](policy/README.md)) |
 | `awsorgctl`, the command line | the release archives, or `go install github.com/truvity/aws-structure/cmd/awsorgctl@latest` |
 | `pkg/registry`: the schema, a strict loader and the validator | no cloud dependency |
-| `pkg/engine/{org,sso,iam,baseline,trail,guardduty}`: Pulumi components with documented child names | [docs/reference.md](docs/reference.md) |
+| `pkg/engine/{org,sso,iam,baseline,trail,guardduty,cdkbootstrap}`: Pulumi components with documented child names | [docs/reference.md](docs/reference.md) |
 | `pkg/preflight`: the refusals in front of an apply | [docs/safety.md](docs/safety.md) |
 | `pkg/drift`: the live read-back and the access-roles map | read only |
-| `pkg/fleet`, `pkg/boundary`, `pkg/alerting`, `pkg/cost`, `pkg/backend`, `pkg/dns`, `pkg/ssosync`, `pkg/awsconfig`, `pkg/awsprofile`, `pkg/bootstrap`, `pkg/appliance` | the estate-wide pieces an organization's root stacks are built from ([docs/reference.md](docs/reference.md)) |
+| `pkg/fleet`, `pkg/boundary`, `pkg/cdkbootstrap`, `pkg/alerting`, `pkg/cost`, `pkg/backend`, `pkg/dns`, `pkg/ssosync`, `pkg/awsconfig`, `pkg/awsprofile`, `pkg/bootstrap`, `pkg/appliance` | the estate-wide pieces an organization's root stacks are built from ([docs/reference.md](docs/reference.md)) |
 
 ## Who it is for
 
