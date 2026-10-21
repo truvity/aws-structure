@@ -1,6 +1,10 @@
 package boundary
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/truvity/aws-structure/policy"
+)
 
 // The ACK controllers' own roles. With IAMRoleSelector a controller calls
 // sts:AssumeRole on the builder of a namespace's project and then acts as the
@@ -15,16 +19,6 @@ const (
 	// the namespace of the custom resource.
 	ackNamespaceTag = "services.k8s.aws/namespace"
 )
-
-// oneOrMany renders a one-element list as the bare value, as IAM documents
-// are usually written.
-func oneOrMany(v []string) any {
-	if len(v) == 1 {
-		return v[0]
-	}
-
-	return v
-}
 
 func (s *Spec) roleARN(pattern string) string {
 	return fmt.Sprintf("arn:%s:iam::*:role/%s", s.Partition, pattern)
@@ -44,22 +38,22 @@ func (s *Spec) slugRoles(slugs ...[]string) []string {
 }
 
 // assumeBuilders lets a controller's own role assume the builders.
-func (s *Spec) assumeBuilders() statement {
+func (s *Spec) assumeBuilders() policy.Statement {
 	var roles []string
 	for _, p := range s.ACK.BuilderRoles {
 		roles = append(roles, s.roleARN(p))
 	}
 
-	return statement{
+	return policy.Statement{
 		Sid: sidAssumeBuilders, Effect: allow, Action: []string{"sts:AssumeRole", "sts:TagSession"},
-		Resource: oneOrMany(roles),
+		Resource: roles,
 	}
 }
 
-func (s *Spec) controller(name string, stmts ...statement) (string, error) {
+func (s *Spec) controller(name string, stmts ...policy.Statement) (string, error) {
 	stmts = append(stmts, s.assumeBuilders(), s.denyBoundaryEdit(), noBoundaryDelete())
 
-	return marshal(name, document{Version: policyVersion, Statement: stmts})
+	return marshal(name, stmts)
 }
 
 // controllerIAM is the IAM controller's own role: it creates and manages the
@@ -67,37 +61,28 @@ func (s *Spec) controller(name string, stmts ...statement) (string, error) {
 // (inline policies only, no managed policies, no PassRole, no users), and only
 // under the boundaries it delegates.
 func (s *Spec) controllerIAM() (string, error) {
-	roles := oneOrMany(s.slugRoles(s.ACK.IAMRoleSlugs))
-	ownedRequest := map[string]any{condStringEquals: map[string]any{"aws:RequestTag/" + ackNamespaceTag: s.ACK.IAMNamespace}}
-	owned := map[string]any{condStringEquals: map[string]any{"aws:ResourceTag/" + ackNamespaceTag: s.ACK.IAMNamespace}}
-	bounded := oneOrMany(s.DelegateARNs(s.Names.ACKControllerIAM))
-
-	withBoundary := func(c map[string]any) map[string]any {
-		out := map[string]any{"ArnLike": map[string]any{condPermissionsBoundary: bounded}}
-		for k, v := range c {
-			out[k] = v
-		}
-
-		return out
-	}
+	roles := s.slugRoles(s.ACK.IAMRoleSlugs)
+	ownedRequest := cond(condStringEquals, "aws:RequestTag/"+ackNamespaceTag, s.ACK.IAMNamespace)
+	owned := cond(condStringEquals, "aws:ResourceTag/"+ackNamespaceTag, s.ACK.IAMNamespace)
+	bounded := cond("ArnLike", condPermissionsBoundary, s.DelegateARNs(s.Names.ACKControllerIAM)...)
 
 	return s.controller(s.Names.ACKControllerIAM,
-		statement{Sid: "AllowIAMRead", Effect: allow, Action: []string{"iam:Get*", "iam:List*"}, Resource: "*"},
-		statement{
-			Sid: "AllowCreateManagedRole", Effect: allow, Action: actionCreateRole, Resource: roles,
-			Condition: withBoundary(ownedRequest),
+		policy.Statement{Sid: "AllowIAMRead", Effect: allow, Action: []string{"iam:Get*", "iam:List*"}, Resource: star()},
+		policy.Statement{
+			Sid: "AllowCreateManagedRole", Effect: allow, Action: []string{actionCreateRole}, Resource: roles,
+			Condition: []policy.Condition{bounded, ownedRequest},
 		},
-		statement{
-			Sid: "AllowSetBoundaryOnManagedRole", Effect: allow, Action: actionPutRoleBoundary, Resource: roles,
-			Condition: withBoundary(owned),
+		policy.Statement{
+			Sid: "AllowSetBoundaryOnManagedRole", Effect: allow, Action: []string{actionPutRoleBoundary}, Resource: roles,
+			Condition: []policy.Condition{bounded, owned},
 		},
-		statement{
+		policy.Statement{
 			Sid: "AllowManageManagedRole", Effect: allow,
 			Action: []string{
 				"iam:UpdateRole", "iam:UpdateRoleDescription", "iam:UpdateAssumeRolePolicy", "iam:DeleteRole",
 				"iam:TagRole", "iam:UntagRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy",
 			},
-			Resource: roles, Condition: owned,
+			Resource: roles, Condition: []policy.Condition{owned},
 		},
 	)
 }
@@ -113,27 +98,27 @@ func (s *Spec) controllerIAM() (string, error) {
 func (s *Spec) controllerEKS() (string, error) {
 	return s.controller(s.Names.ACKControllerEKS,
 		s.podIdentityStatement("*", "*"),
-		statement{
-			Sid: "AllowPassPlatformRoles", Effect: allow, Action: "iam:PassRole",
-			Resource:  oneOrMany(s.slugRoles(s.ACK.IAMRoleSlugs, s.ACK.PodIdentityRoleSlugs)),
-			Condition: passedToPods(),
+		policy.Statement{
+			Sid: "AllowPassPlatformRoles", Effect: allow, Action: []string{"iam:PassRole"},
+			Resource:  s.slugRoles(s.ACK.IAMRoleSlugs, s.ACK.PodIdentityRoleSlugs),
+			Condition: []policy.Condition{passedToPods()},
 		},
-		statement{
+		policy.Statement{
 			Sid: "AllowRoleRead", Effect: allow, Action: []string{"iam:GetRole", "iam:ListAttachedRolePolicies"},
-			Resource: s.roleARN("*"),
+			Resource: []string{s.roleARN("*")},
 		},
 	)
 }
 
-func passedToPods() map[string]any {
-	return map[string]any{"StringEqualsIfExists": map[string]any{"iam:PassedToService": "pods.eks.amazonaws.com"}}
+func passedToPods() policy.Condition {
+	return cond("StringEqualsIfExists", "iam:PassedToService", "pods.eks.amazonaws.com")
 }
 
 // podIdentityStatement allows the Pod Identity association calls on the
 // cluster and its associations; cluster is a cluster name or a policy
 // variable.
-func (s *Spec) podIdentityStatement(cluster, associations string) statement {
-	return statement{
+func (s *Spec) podIdentityStatement(cluster, associations string) policy.Statement {
+	return policy.Statement{
 		Sid: "AllowPodIdentityAssociations", Effect: allow,
 		Action: []string{
 			"eks:CreatePodIdentityAssociation", "eks:DeletePodIdentityAssociation",
@@ -156,8 +141,8 @@ func (s *Spec) controllerS3() (string, error) {
 	}
 
 	return s.controller(s.Names.ACKControllerS3,
-		statement{Sid: "AllowOwnBuckets", Effect: allow, Action: "s3:*", Resource: oneOrMany(buckets)},
-		statement{Sid: "AllowBucketList", Effect: allow, Action: "s3:ListAllMyBuckets", Resource: "*"},
+		policy.Statement{Sid: "AllowOwnBuckets", Effect: allow, Action: []string{"s3:*"}, Resource: buckets},
+		policy.Statement{Sid: "AllowBucketList", Effect: allow, Action: []string{"s3:ListAllMyBuckets"}, Resource: star()},
 	)
 }
 
@@ -165,9 +150,9 @@ func (s *Spec) controllerS3() (string, error) {
 // acts for projects as their builders.
 func (s *Spec) controllerKMS() (string, error) {
 	return s.controller(s.Names.ACKControllerKMS,
-		statement{
+		policy.Statement{
 			Sid: "AllowKeyRead", Effect: allow, Action: []string{"kms:Describe*", "kms:Get*", "kms:List*"},
-			Resource: "*",
+			Resource: star(),
 		},
 	)
 }
@@ -175,9 +160,9 @@ func (s *Spec) controllerKMS() (string, error) {
 // controllerDynamoDB is the DynamoDB controller's own role: reads only.
 func (s *Spec) controllerDynamoDB() (string, error) {
 	return s.controller(s.Names.ACKControllerDynamoDB,
-		statement{
+		policy.Statement{
 			Sid: "AllowTableRead", Effect: allow, Action: []string{"dynamodb:Describe*", "dynamodb:List*"},
-			Resource: "*",
+			Resource: star(),
 		},
 	)
 }

@@ -1,6 +1,10 @@
 package boundary
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/truvity/aws-structure/policy"
+)
 
 // roleDeployer is the deployer boundary under the role name. It is the
 // legacy deploy boundary (everything, but a created role needs "project" and
@@ -9,22 +13,22 @@ import "fmt"
 // request tags. LegacyProjectNames renders the transition form without the
 // name rule.
 func (s *Spec) roleDeployer() (string, error) {
-	stmts := []statement{
+	stmts := []policy.Statement{
 		allowAll(),
 		{
-			Sid: "DenyCreateRoleWithoutProjectTag", Effect: deny, Action: actionCreateRole, Resource: "*",
-			Condition: map[string]any{"Null": map[string]any{"aws:RequestTag/project": "true"}},
+			Sid: "DenyCreateRoleWithoutProjectTag", Effect: deny, Action: []string{actionCreateRole}, Resource: star(),
+			Condition: []policy.Condition{cond("Null", "aws:RequestTag/project", "true")},
 		},
 		{
-			Sid: "DenyCreateRoleWithoutClusterTag", Effect: deny, Action: actionCreateRole, Resource: "*",
-			Condition: map[string]any{"Null": map[string]any{"aws:RequestTag/cluster": "true"}},
+			Sid: "DenyCreateRoleWithoutClusterTag", Effect: deny, Action: []string{actionCreateRole}, Resource: star(),
+			Condition: []policy.Condition{cond("Null", "aws:RequestTag/cluster", "true")},
 		},
 	}
 
 	if !s.LegacyProjectNames {
-		stmts = append(stmts, statement{
-			Sid: "DenyCreateRoleOutsideProjectName", Effect: deny, Action: actionCreateRole,
-			NotResource: fmt.Sprintf("arn:%s:iam::*:role/${aws:RequestTag/cluster}-${aws:RequestTag/project}.*", s.Partition),
+		stmts = append(stmts, policy.Statement{
+			Sid: "DenyCreateRoleOutsideProjectName", Effect: deny, Action: []string{actionCreateRole},
+			NotResource: []string{fmt.Sprintf("arn:%s:iam::*:role/${aws:RequestTag/cluster}-${aws:RequestTag/project}.*", s.Partition)},
 		})
 	}
 
@@ -34,5 +38,5 @@ func (s *Spec) roleDeployer() (string, error) {
 		noBoundaryDelete(),
 	)
 
-	return marshal(s.Names.RoleDeployer, document{Version: policyVersion, Statement: stmts})
+	return marshal(s.Names.RoleDeployer, stmts)
 }

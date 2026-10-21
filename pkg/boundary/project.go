@@ -1,6 +1,10 @@
 package boundary
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/truvity/aws-structure/policy"
+)
 
 // The project boundaries. A project's infrastructure is created by its
 // builder role (ProjectACK; EmployeeACK for an employee sandbox), which every
@@ -63,22 +67,8 @@ func (s *Spec) projectBuckets(legacy, objects bool) []string {
 	return []string{fmt.Sprintf("arn:%s:s3:::%s%s-%s-*%s", s.Partition, s.ProjectBucketPrefix, tagCluster, tagProject, suffix)}
 }
 
-func ownProject() map[string]any {
-	return map[string]any{condStringEquals: map[string]any{"aws:ResourceTag/project": tagProject}}
-}
-
-// withCond returns base plus the entries of extra, a new map.
-func withCond(base map[string]any, extra map[string]any) map[string]any {
-	out := make(map[string]any, len(base)+len(extra))
-	for k, v := range base {
-		out[k] = v
-	}
-
-	for k, v := range extra {
-		out[k] = v
-	}
-
-	return out
+func ownProject() policy.Condition {
+	return cond(condStringEquals, "aws:ResourceTag/project", tagProject)
 }
 
 func (s *Spec) projectACK() (string, error) {
@@ -103,20 +93,24 @@ func (s *Spec) employeeACK() (string, error) {
 // characters.
 func (s *Spec) builder(name string, legacy bool) (string, error) {
 	roles := s.projectRoles(legacy)
-	workload := map[string]any{"ArnLike": map[string]any{condPermissionsBoundary: oneOrMany(s.DelegateARNs(name))}}
+	policies := s.projectPolicies(legacy)
+	workload := cond("ArnLike", condPermissionsBoundary, s.DelegateARNs(name)...)
 	own := ownProject()
 
-	stmts := []statement{
-		{Sid: "AllowIAMRead", Effect: allow, Action: []string{"iam:Get*", "iam:List*"}, Resource: "*"},
+	stmts := []policy.Statement{
+		{Sid: "AllowIAMRead", Effect: allow, Action: []string{"iam:Get*", "iam:List*"}, Resource: star()},
 		{
-			Sid: "AllowCreateWorkloadRole", Effect: allow, Action: actionCreateRole, Resource: roles,
-			Condition: withCond(workload, map[string]any{condStringEquals: map[string]any{
-				"aws:RequestTag/project": tagProject, "aws:RequestTag/cluster": tagCluster,
-			}}),
+			Sid: "AllowCreateWorkloadRole", Effect: allow, Action: []string{actionCreateRole}, Resource: roles,
+			Arrays: policy.ArrayResource,
+			Condition: []policy.Condition{
+				workload,
+				cond(condStringEquals, "aws:RequestTag/project", tagProject),
+				cond(condStringEquals, "aws:RequestTag/cluster", tagCluster),
+			},
 		},
 		{
-			Sid: "AllowSetWorkloadBoundary", Effect: allow, Action: actionPutRoleBoundary, Resource: roles,
-			Condition: withCond(workload, own),
+			Sid: "AllowSetWorkloadBoundary", Effect: allow, Action: []string{actionPutRoleBoundary}, Resource: roles,
+			Arrays: policy.ArrayResource, Condition: []policy.Condition{workload, own},
 		},
 		{
 			Sid: "AllowManageOwnRole", Effect: allow,
@@ -124,14 +118,12 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 				"iam:UpdateRole", "iam:UpdateRoleDescription", "iam:UpdateAssumeRolePolicy", "iam:DeleteRole",
 				"iam:TagRole", "iam:UntagRole", "iam:PutRolePolicy", "iam:DeleteRolePolicy",
 			},
-			Resource: roles, Condition: own,
+			Resource: roles, Arrays: policy.ArrayResource, Condition: []policy.Condition{own},
 		},
 		{
 			Sid: "AllowAttachOwnPolicy", Effect: allow, Action: []string{"iam:AttachRolePolicy", "iam:DetachRolePolicy"},
-			Resource: roles,
-			Condition: withCond(own, map[string]any{
-				"ArnLike": map[string]any{"iam:PolicyARN": s.projectPolicies(legacy)},
-			}),
+			Resource: roles, Arrays: policy.ArrayResource,
+			Condition: []policy.Condition{own, condList("ArnLike", "iam:PolicyARN", policies)},
 		},
 		{
 			Sid: "AllowManageOwnPolicy", Effect: allow,
@@ -139,11 +131,11 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 				"iam:CreatePolicy", "iam:CreatePolicyVersion", "iam:DeletePolicy", "iam:DeletePolicyVersion",
 				"iam:SetDefaultPolicyVersion", "iam:TagPolicy", "iam:UntagPolicy",
 			},
-			Resource: s.projectPolicies(legacy),
+			Resource: policies, Arrays: policy.ArrayResource,
 		},
 		{
-			Sid: "AllowPassOwnRoleToPodIdentity", Effect: allow, Action: "iam:PassRole", Resource: roles,
-			Condition: passedToPods(),
+			Sid: "AllowPassOwnRoleToPodIdentity", Effect: allow, Action: []string{"iam:PassRole"}, Resource: roles,
+			Arrays: policy.ArrayResource, Condition: []policy.Condition{passedToPods()},
 		},
 		s.podIdentityStatement(tagCluster, "*"),
 		{
@@ -152,9 +144,9 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 				"s3:CreateBucket", "s3:ListBucket", "s3:GetBucket*", "s3:PutBucket*", "s3:DeleteBucket*",
 				"s3:Get*Configuration", "s3:Put*Configuration",
 			},
-			Resource: s.projectBuckets(legacy, false),
+			Resource: s.projectBuckets(legacy, false), Arrays: policy.ArrayResource,
 		},
-		{Sid: "AllowBucketList", Effect: allow, Action: "s3:ListAllMyBuckets", Resource: "*"},
+		{Sid: "AllowBucketList", Effect: allow, Action: []string{"s3:ListAllMyBuckets"}, Resource: star()},
 		{
 			// A key has no tag before it exists, so creation is conditioned on the
 			// request tag. CreateKey with Tags is also authorized as
@@ -165,10 +157,10 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 			// new, still untagged key. Keeping an untagged key from being
 			// claimed is the account owner's rule: every customer-managed key
 			// carries a project tag.
-			Sid: "AllowCreateKey", Effect: allow, Action: []string{"kms:CreateKey", "kms:TagResource"}, Resource: "*",
-			Condition: map[string]any{
-				condStringEquals: map[string]any{"aws:RequestTag/project": tagProject},
-				"Null":           map[string]any{"aws:ResourceTag/project": "true"},
+			Sid: "AllowCreateKey", Effect: allow, Action: []string{"kms:CreateKey", "kms:TagResource"}, Resource: star(),
+			Condition: []policy.Condition{
+				cond(condStringEquals, "aws:RequestTag/project", tagProject),
+				cond("Null", "aws:ResourceTag/project", "true"),
 			},
 		},
 		{
@@ -179,39 +171,39 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 				"kms:EnableKey", "kms:EnableKeyRotation", "kms:DisableKeyRotation", "kms:CreateAlias",
 				"kms:UpdateAlias", "kms:DeleteAlias",
 			},
-			Resource: "*", Condition: own,
+			Resource: star(), Condition: []policy.Condition{own},
 		},
 		{
 			Sid: "AllowOwnAlias", Effect: allow, Action: []string{"kms:CreateAlias", "kms:UpdateAlias", "kms:DeleteAlias"},
-			Resource: fmt.Sprintf("arn:%s:kms:*:*:alias/%s-%s-*", s.Partition, tagCluster, tagProject),
+			Resource: []string{fmt.Sprintf("arn:%s:kms:*:*:alias/%s-%s-*", s.Partition, tagCluster, tagProject)},
 		},
-		{Sid: "AllowKeyList", Effect: allow, Action: []string{"kms:ListAliases", "kms:ListKeys"}, Resource: "*"},
+		{Sid: "AllowKeyList", Effect: allow, Action: []string{"kms:ListAliases", "kms:ListKeys"}, Resource: star()},
 
 		// Guards. The Denies on create and tag compare values (setting the
 		// builder's own value is fine); the Deny on untag forbids removing either key.
 		{
 			Sid: "DenyRetagProjectOrCluster", Effect: deny, Action: []string{"iam:TagRole", actionCreateRole},
-			Resource: "*",
-			Condition: map[string]any{
-				"Null":            map[string]any{"aws:RequestTag/project": "false"},
-				"StringNotEquals": map[string]any{"aws:RequestTag/project": tagProject},
+			Resource: star(),
+			Condition: []policy.Condition{
+				cond("Null", "aws:RequestTag/project", "false"),
+				cond("StringNotEquals", "aws:RequestTag/project", tagProject),
 			},
 		},
 		{
 			Sid: "DenyRetagClusterTag", Effect: deny, Action: []string{"iam:TagRole", actionCreateRole},
-			Resource: "*",
-			Condition: map[string]any{
-				"Null":            map[string]any{"aws:RequestTag/cluster": "false"},
-				"StringNotEquals": map[string]any{"aws:RequestTag/cluster": tagCluster},
+			Resource: star(),
+			Condition: []policy.Condition{
+				cond("Null", "aws:RequestTag/cluster", "false"),
+				cond("StringNotEquals", "aws:RequestTag/cluster", tagCluster),
 			},
 		},
 		{
-			Sid: "DenyUntagProjectOrCluster", Effect: deny, Action: "iam:UntagRole", Resource: "*",
-			Condition: map[string]any{"ForAnyValue:StringEquals": map[string]any{"aws:TagKeys": []string{"project", "cluster"}}},
+			Sid: "DenyUntagProjectOrCluster", Effect: deny, Action: []string{"iam:UntagRole"}, Resource: star(),
+			Condition: []policy.Condition{cond("ForAnyValue:StringEquals", "aws:TagKeys", "project", "cluster")},
 		},
 		{
 			Sid: "DenyKeyRetirement", Effect: deny, Action: []string{"kms:ScheduleKeyDeletion", "kms:DisableKey"},
-			Resource: "*",
+			Resource: star(),
 		},
 	}
 
@@ -225,12 +217,15 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 				fmt.Sprintf("arn:%s:iam::*:policy/%s-%s-*", s.Partition, tagCluster, slug))
 		}
 
-		stmts = append(stmts, statement{Sid: "DenyPlatformMintedRoles", Effect: deny, Action: "iam:*", Resource: minted})
+		stmts = append(stmts, policy.Statement{
+			Sid: "DenyPlatformMintedRoles", Effect: deny, Action: []string{"iam:*"}, Resource: minted,
+			Arrays: policy.ArrayResource,
+		})
 	}
 
 	stmts = append(stmts, s.denyBoundaryEdit(), noBoundaryDelete())
 
-	return marshal(name, document{Version: policyVersion, Statement: stmts})
+	return marshal(name, stmts)
 }
 
 // projectWorkload is the boundary of the roles a builder creates for a
@@ -241,7 +236,7 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 func (s *Spec) projectWorkload() (string, error) {
 	legacy := s.LegacyProjectNames
 
-	return marshal(s.Names.ProjectWorkload, document{Version: policyVersion, Statement: []statement{
+	return marshal(s.Names.ProjectWorkload, []policy.Statement{
 		{
 			Sid: "AllowKMSUseOwnProjectKeys", Effect: allow,
 			Action: []string{
@@ -250,28 +245,28 @@ func (s *Spec) projectWorkload() (string, error) {
 				"kms:GenerateDataKeyPairWithoutPlaintext", "kms:DescribeKey", "kms:Sign", "kms:Verify",
 				"kms:GetPublicKey",
 			},
-			Resource: "*", Condition: ownProject(),
+			Resource: star(), Condition: []policy.Condition{ownProject()},
 		},
-		{Sid: "AllowKMSRandom", Effect: allow, Action: "kms:GenerateRandom", Resource: "*"},
+		{Sid: "AllowKMSRandom", Effect: allow, Action: []string{"kms:GenerateRandom"}, Resource: star()},
 		{
 			Sid: "AllowS3Objects", Effect: allow,
 			Action: []string{
 				"s3:GetObject", "s3:GetObjectVersion", "s3:GetObjectTagging", "s3:PutObject", "s3:PutObjectTagging",
 				"s3:DeleteObject", "s3:DeleteObjectVersion", "s3:AbortMultipartUpload", "s3:ListMultipartUploadParts",
 			},
-			Resource: s.projectBuckets(legacy, true),
+			Resource: s.projectBuckets(legacy, true), Arrays: policy.ArrayResource,
 		},
 		{
 			Sid: "AllowS3List", Effect: allow,
 			Action:   []string{"s3:ListBucket", "s3:ListBucketMultipartUploads", "s3:GetBucketLocation"},
-			Resource: s.projectBuckets(legacy, false),
+			Resource: s.projectBuckets(legacy, false), Arrays: policy.ArrayResource,
 		},
 		{
 			Sid: "AllowECRPullOwnRepos", Effect: allow,
 			Action:   []string{"ecr:BatchGetImage", "ecr:GetDownloadUrlForLayer", "ecr:BatchCheckLayerAvailability"},
-			Resource: fmt.Sprintf("arn:%s:ecr:*:*:repository/%s/*", s.Partition, tagProject),
+			Resource: []string{fmt.Sprintf("arn:%s:ecr:*:*:repository/%s/*", s.Partition, tagProject)},
 		},
-		{Sid: "AllowECRToken", Effect: allow, Action: "ecr:GetAuthorizationToken", Resource: "*"},
-		{Sid: "DenyIAM", Effect: deny, Action: "iam:*", Resource: "*"},
-	}})
+		{Sid: "AllowECRToken", Effect: allow, Action: []string{"ecr:GetAuthorizationToken"}, Resource: star()},
+		{Sid: "DenyIAM", Effect: deny, Action: []string{"iam:*"}, Resource: star()},
+	})
 }
