@@ -1,13 +1,13 @@
 package boundary
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
 	"strings"
 
 	"github.com/truvity/aws-structure/pkg/registry"
+	"github.com/truvity/aws-structure/policy"
 )
 
 // Names are the names the caller gives each shape, as they appear in IAM.
@@ -481,27 +481,9 @@ func (s *Spec) EnforcedTags(name string) []string {
 	return nil
 }
 
-type (
-	document struct {
-		Version   string      `json:"Version"`
-		Statement []statement `json:"Statement"`
-	}
-
-	statement struct {
-		Sid         string         `json:"Sid"`
-		Effect      string         `json:"Effect"`
-		Action      any            `json:"Action,omitempty"`
-		NotAction   any            `json:"NotAction,omitempty"`
-		Resource    any            `json:"Resource,omitempty"`
-		NotResource any            `json:"NotResource,omitempty"`
-		Condition   map[string]any `json:"Condition,omitempty"`
-	}
-)
-
 const (
-	policyVersion = "2012-10-17"
-	allow         = "Allow"
-	deny          = "Deny"
+	allow = policy.Allow
+	deny  = policy.Deny
 
 	sidAllowAll         = "AllowAll"
 	sidDenyBoundaryEdit = "DenyBoundaryPolicyEdit"
@@ -516,12 +498,29 @@ const (
 	condPermissionsBoundary = "iam:PermissionsBoundary"
 )
 
-func allowAll() statement {
-	return statement{Sid: sidAllowAll, Effect: allow, Action: "*", Resource: "*"}
+// star is the one-element list "*".
+func star() []string { return []string{"*"} }
+
+// cond is a condition with one or more values; a single value is written as a
+// bare string.
+func cond(operator, key string, values ...string) policy.Condition {
+	return policy.Condition{Operator: operator, Key: key, Values: values}
 }
 
-func (s *Spec) denyBoundaryEdit() statement {
-	return statement{
+// condList is cond with the values kept an array even when there is one.
+func condList(operator, key string, values []string) policy.Condition {
+	return policy.Condition{Operator: operator, Key: key, Values: values, Array: true}
+}
+
+func allowAll() policy.Statement {
+	return policy.Statement{Sid: sidAllowAll, Effect: allow, Action: star(), Resource: star()}
+}
+
+// guardDenyBoundaryEdit is the statement that stops any edit of a boundary
+// policy; denyBoundaryEdit is it for this spec's boundaries. The resource stays
+// a one-element array: every document rendered so far carries it that way.
+func guardDenyBoundaryEdit(boundaryARNs ...string) policy.Statement {
+	return policy.Statement{
 		Sid:    sidDenyBoundaryEdit,
 		Effect: deny,
 		Action: []string{
@@ -530,21 +529,29 @@ func (s *Spec) denyBoundaryEdit() statement {
 			"iam:DeletePolicyVersion",
 			"iam:SetDefaultPolicyVersion",
 		},
-		Resource: []string{s.arn(s.Prefix + "*")},
+		Resource: boundaryARNs,
+		Arrays:   policy.ArrayResource,
 	}
 }
 
-func noBoundaryDelete() statement {
-	return statement{
+func (s *Spec) denyBoundaryEdit() policy.Statement {
+	return guardDenyBoundaryEdit(s.arn(s.Prefix + "*"))
+}
+
+func noBoundaryDelete() policy.Statement {
+	return policy.Statement{
 		Sid:      sidNoBoundaryDelete,
 		Effect:   deny,
 		Action:   []string{"iam:DeleteRolePermissionsBoundary", "iam:DeleteUserPermissionsBoundary"},
-		Resource: "*",
+		Resource: star(),
 	}
 }
 
-func denyWithoutBoundary(sid string, allowed []string) statement {
-	return statement{
+// denyWithoutBoundary denies creating a role or user, and putting a boundary
+// on one, under any boundary but those matching allowed. The list stays an
+// array even for one value, as in every document rendered so far.
+func denyWithoutBoundary(sid string, allowed []string) policy.Statement {
+	return policy.Statement{
 		Sid:    sid,
 		Effect: deny,
 		Action: []string{
@@ -553,10 +560,8 @@ func denyWithoutBoundary(sid string, allowed []string) statement {
 			actionCreateUser,
 			actionPutUserBoundary,
 		},
-		Resource: "*",
-		Condition: map[string]any{
-			condStringNotLike: map[string]any{condPermissionsBoundary: allowed},
-		},
+		Resource:  star(),
+		Condition: []policy.Condition{condList(condStringNotLike, condPermissionsBoundary, allowed)},
 	}
 }
 
@@ -575,8 +580,12 @@ var destructiveActions = []string{
 	"route53:DeleteHostedZone",
 }
 
-func marshal(name string, d document) (string, error) {
-	b, err := json.Marshal(d)
+// marshal renders the statements as the policy document of the boundary name,
+// in the policy module's canonical form. It does not validate: a spec the
+// package has always rendered (a delegating boundary with no delegate renders
+// an empty condition) renders as before; Spec.Validate is the check of a spec.
+func marshal(name string, stmts []policy.Statement) (string, error) {
+	b, err := policy.Document{Version: policy.Version, Statement: stmts}.MarshalJSON()
 	if err != nil {
 		return "", fmt.Errorf("marshal %s policy: %w", name, err)
 	}
@@ -591,7 +600,7 @@ func (s *Spec) admin() (string, error) { return s.adminAs(s.Names.Admin) }
 func (s *Spec) roleAdmin() (string, error) { return s.adminAs(s.Names.RoleAdmin) }
 
 func (s *Spec) adminAs(name string) (string, error) {
-	stmts := []statement{
+	stmts := []policy.Statement{
 		allowAll(),
 	}
 
@@ -600,7 +609,7 @@ func (s *Spec) adminAs(name string) (string, error) {
 	}
 
 	stmts = append(stmts,
-		statement{
+		policy.Statement{
 			Sid:    "DenyChangePermissionsSetsRoles",
 			Effect: deny,
 			Action: []string{
@@ -619,10 +628,10 @@ func (s *Spec) adminAs(name string) (string, error) {
 
 	stmts = append(stmts,
 		noBoundaryDelete(),
-		statement{Sid: "DenyDestructiveActions", Effect: deny, Action: destructiveActions, Resource: "*"},
-		statement{
-			Sid: "DenyDeletePulumiStateBuckets", Effect: deny, Action: "s3:DeleteBucket",
-			Resource: fmt.Sprintf("arn:%s:s3:::pulumi-state-*", s.Partition),
+		policy.Statement{Sid: "DenyDestructiveActions", Effect: deny, Action: destructiveActions, Resource: star()},
+		policy.Statement{
+			Sid: "DenyDeletePulumiStateBuckets", Effect: deny, Action: []string{"s3:DeleteBucket"},
+			Resource: []string{fmt.Sprintf("arn:%s:s3:::pulumi-state-*", s.Partition)},
 		},
 	)
 
@@ -630,30 +639,30 @@ func (s *Spec) adminAs(name string) (string, error) {
 		stmts = append(stmts, denyOrgAdmin())
 	}
 
-	return marshal(name, document{Version: policyVersion, Statement: stmts})
+	return marshal(name, stmts)
 }
 
 func (s *Spec) viewer() (string, error) {
-	return marshal(s.Names.Default, document{Version: policyVersion, Statement: []statement{
+	return marshal(s.Names.Default, []policy.Statement{
 		allowAll(),
-		{Sid: "DenyAllIAMWrite", Effect: deny, Action: iamWriteDenied, Resource: "*"},
-	}})
+		{Sid: "DenyAllIAMWrite", Effect: deny, Action: iamWriteDenied, Resource: star()},
+	})
 }
 
 func (s *Spec) ackIAM() (string, error) {
-	return marshal(s.Names.ACKIAM, document{Version: policyVersion, Statement: []statement{
+	return marshal(s.Names.ACKIAM, []policy.Statement{
 		allowAll(),
 		denyWithoutBoundary("DenyCreateWithoutAllowedBoundary", s.DelegateARNs(s.Names.ACKIAM)),
 		s.denyBoundaryEdit(),
 		noBoundaryDelete(),
-	}})
+	})
 }
 
 // capa allows everything plus the IAM actions provisioning needs, with NotAction:
 // an explicit Deny always wins over an Allow, so exceptions are carved out of
 // the deny instead of allowed separately.
 func (s *Spec) capa() (string, error) {
-	return marshal(s.Names.CAPA, document{Version: policyVersion, Statement: []statement{
+	return marshal(s.Names.CAPA, []policy.Statement{
 		allowAll(),
 		{
 			Sid:    "DenyIAMWriteExceptAllowed",
@@ -662,30 +671,30 @@ func (s *Spec) capa() (string, error) {
 				"iam:PassRole", "iam:CreateServiceLinkedRole", "iam:Get*", "iam:List*",
 				"iam:SimulateCustomPolicy", "iam:SimulatePrincipalPolicy", "sts:*",
 			},
-			Resource: fmt.Sprintf("arn:%s:iam::*:*", s.Partition),
+			Resource: []string{fmt.Sprintf("arn:%s:iam::*:*", s.Partition)},
 		},
-	}})
+	})
 }
 
 func (s *Spec) eksAutoNode() (string, error) {
-	return marshal(s.Names.EKSAutoNode, document{Version: policyVersion, Statement: []statement{allowAll()}})
+	return marshal(s.Names.EKSAutoNode, []policy.Statement{allowAll()})
 }
 
 func (s *Spec) deploy() (string, error) {
-	return marshal(s.Names.Deploy, document{Version: policyVersion, Statement: []statement{
+	return marshal(s.Names.Deploy, []policy.Statement{
 		allowAll(),
 		{
-			Sid: "DenyCreateRoleWithoutProjectTag", Effect: deny, Action: actionCreateRole, Resource: "*",
-			Condition: map[string]any{"Null": map[string]any{"aws:RequestTag/project": "true"}},
+			Sid: "DenyCreateRoleWithoutProjectTag", Effect: deny, Action: []string{actionCreateRole}, Resource: star(),
+			Condition: []policy.Condition{cond("Null", "aws:RequestTag/project", "true")},
 		},
 		{
-			Sid: "DenyCreateRoleWithoutClusterTag", Effect: deny, Action: actionCreateRole, Resource: "*",
-			Condition: map[string]any{"Null": map[string]any{"aws:RequestTag/cluster": "true"}},
+			Sid: "DenyCreateRoleWithoutClusterTag", Effect: deny, Action: []string{actionCreateRole}, Resource: star(),
+			Condition: []policy.Condition{cond("Null", "aws:RequestTag/cluster", "true")},
 		},
 		denyWithoutBoundary("DenyCreateOrChangeWithoutAllowedBoundary", s.DelegateARNs(s.Names.Deploy)),
 		s.denyBoundaryEdit(),
 		noBoundaryDelete(),
-	}})
+	})
 }
 
 // project restricts every resource access to the principal's own project, by
@@ -693,24 +702,24 @@ func (s *Spec) deploy() (string, error) {
 func (s *Spec) project() (string, error) {
 	const tag = "${aws:PrincipalTag/project}"
 
-	byProject := map[string]any{condStringEquals: map[string]any{"aws:ResourceTag/project": tag}}
+	byProject := []policy.Condition{cond(condStringEquals, "aws:ResourceTag/project", tag)}
 
-	return marshal(s.Names.Project, document{Version: policyVersion, Statement: []statement{
+	return marshal(s.Names.Project, []policy.Statement{
 		{
-			Sid: "AllowSSMByProject", Effect: allow, Action: "ssm:*",
-			Resource: fmt.Sprintf("arn:%s:ssm:*:*:parameter/%s/*", s.Partition, tag),
+			Sid: "AllowSSMByProject", Effect: allow, Action: []string{"ssm:*"},
+			Resource: []string{fmt.Sprintf("arn:%s:ssm:*:*:parameter/%s/*", s.Partition, tag)},
 		},
-		{Sid: "AllowSMByProject", Effect: allow, Action: "secretsmanager:*", Resource: "*", Condition: byProject},
-		{Sid: "AllowKMSByProject", Effect: allow, Action: "kms:*", Resource: "*", Condition: byProject},
+		{Sid: "AllowSMByProject", Effect: allow, Action: []string{"secretsmanager:*"}, Resource: star(), Condition: byProject},
+		{Sid: "AllowKMSByProject", Effect: allow, Action: []string{"kms:*"}, Resource: star(), Condition: byProject},
 		{
-			Sid: "AllowS3ByProject", Effect: allow, Action: "s3:*",
+			Sid: "AllowS3ByProject", Effect: allow, Action: []string{"s3:*"},
 			Resource: []string{
 				fmt.Sprintf("arn:%s:s3:::%s-*", s.Partition, tag),
 				fmt.Sprintf("arn:%s:s3:::%s-*/*", s.Partition, tag),
 			},
 		},
-		{Sid: "DenyAllIAM", Effect: deny, Action: "iam:*", Resource: "*"},
-	}})
+		{Sid: "DenyAllIAM", Effect: deny, Action: []string{"iam:*"}, Resource: star()},
+	})
 }
 
 func (s *Spec) audit() (string, error) { return s.auditAs(s.Names.Audit) }
@@ -719,15 +728,15 @@ func (s *Spec) audit() (string, error) { return s.auditAs(s.Names.Audit) }
 func (s *Spec) roleAuditor() (string, error) { return s.auditAs(s.Names.RoleAuditor) }
 
 func (s *Spec) auditAs(name string) (string, error) {
-	return marshal(name, document{Version: policyVersion, Statement: []statement{
+	return marshal(name, []policy.Statement{
 		allowAll(),
-		{Sid: "DenyAllIAMWrite", Effect: deny, Action: iamWriteDenied, Resource: "*"},
-		{Sid: "DenyDestructiveActions", Effect: deny, Action: destructiveActions, Resource: "*"},
+		{Sid: "DenyAllIAMWrite", Effect: deny, Action: iamWriteDenied, Resource: star()},
+		{Sid: "DenyDestructiveActions", Effect: deny, Action: destructiveActions, Resource: star()},
 		{
-			Sid: "DenyDeletePulumiStateBuckets", Effect: deny, Action: "s3:DeleteBucket",
-			Resource: fmt.Sprintf("arn:%s:s3:::pulumi-state-*", s.Partition),
+			Sid: "DenyDeletePulumiStateBuckets", Effect: deny, Action: []string{"s3:DeleteBucket"},
+			Resource: []string{fmt.Sprintf("arn:%s:s3:::pulumi-state-*", s.Partition)},
 		},
-	}})
+	})
 }
 
 // Policies returns the boundary policies every account carries, each as a
@@ -805,10 +814,10 @@ func Policies(s Spec) ([]registry.Boundary, error) {
 // leaves the reserved roles out and keeps the service-linked roles (the
 // provisioning path does not change them). Member accounts are provisioned
 // through the service-linked role, so every other variant lists both.
-func (s *Spec) denyPermissionSetRoleResources() any {
+func (s *Spec) denyPermissionSetRoleResources() []string {
 	serviceLinked := fmt.Sprintf("arn:%s:iam::*:role/AWSServiceRoleFor*", s.Partition)
 	if s.OrgAdmin == OrgAdminManagement {
-		return serviceLinked
+		return []string{serviceLinked}
 	}
 
 	return []string{

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+
+	"github.com/truvity/aws-structure/policy"
 )
 
 // GrunScope configures the Grun boundary: the roles the self-hosted GitHub
@@ -75,31 +77,31 @@ func (s *Spec) grun() (string, error) {
 		return a == "iam:Pass*" || (a == "iam:Create*" && len(s.Grun.ServiceLinkedRoles) > 0)
 	})
 
-	stmts := []statement{
+	stmts := []policy.Statement{
 		allowAll(),
-		{Sid: "DenyIAMWriteExceptGrun", Effect: deny, Action: writes, Resource: "*"},
+		{Sid: "DenyIAMWriteExceptGrun", Effect: deny, Action: writes, Resource: star()},
 	}
 
 	if len(s.Grun.ServiceLinkedRoles) > 0 {
 		// iam:Create* except iam:CreateServiceLinkedRole for the allowed services.
-		stmts = append(stmts, statement{
-			Sid: "DenyCreateExceptServiceLinkedRole", Effect: deny, Action: "iam:Create*", Resource: "*",
-			Condition: map[string]any{"StringNotEquals": map[string]any{condServiceNamed: oneOrMany(s.Grun.ServiceLinkedRoles)}},
+		stmts = append(stmts, policy.Statement{
+			Sid: "DenyCreateExceptServiceLinkedRole", Effect: deny, Action: []string{"iam:Create*"}, Resource: star(),
+			Condition: []policy.Condition{cond("StringNotEquals", condServiceNamed, s.Grun.ServiceLinkedRoles...)},
 		})
 	}
 
 	stmts = append(stmts,
-		statement{
-			Sid: "DenyPassRoleOutsideGrunRoles", Effect: deny, Action: actionPassRole,
-			NotResource: s.roleARN(s.Grun.RolePrefix + "*"),
+		policy.Statement{
+			Sid: "DenyPassRoleOutsideGrunRoles", Effect: deny, Action: []string{actionPassRole},
+			NotResource: []string{s.roleARN(s.Grun.RolePrefix + "*")},
 		},
-		statement{
-			Sid: "DenyPassRoleToOtherServices", Effect: deny, Action: actionPassRole, Resource: "*",
-			Condition: map[string]any{"StringNotEquals": map[string]any{condPassedTo: oneOrMany(s.Grun.PassedToServices)}},
+		policy.Statement{
+			Sid: "DenyPassRoleToOtherServices", Effect: deny, Action: []string{actionPassRole}, Resource: star(),
+			Condition: []policy.Condition{cond("StringNotEquals", condPassedTo, s.Grun.PassedToServices...)},
 		},
 		s.denyBoundaryEdit(),
 		noBoundaryDelete(),
 	)
 
-	return marshal(s.Names.Grun, document{Version: policyVersion, Statement: stmts})
+	return marshal(s.Names.Grun, stmts)
 }

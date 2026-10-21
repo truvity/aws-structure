@@ -16,6 +16,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.1
 	github.com/pulumi/pulumi-aws/sdk/v7 v7.48.0
 	github.com/pulumi/pulumi/sdk/v3 v3.264.0
+	github.com/truvity/aws-structure/policy v0.1.0
 	go.yaml.in/yaml/v3 v3.0.5
 )
 

@@ -3,6 +3,8 @@ package boundary
 import (
 	"fmt"
 	"sort"
+
+	"github.com/truvity/aws-structure/policy"
 )
 
 // OrgAdminMode selects the variant of the admin boundary for the one
@@ -61,17 +63,17 @@ func OrgAdminReadCarveOuts() []string {
 	}
 }
 
-func (s *Spec) allowOrgAdmin() statement {
-	return statement{
+func (s *Spec) allowOrgAdmin() policy.Statement {
+	return policy.Statement{
 		Sid: "AllowOrganizationAdmin", Effect: allow,
-		Action: append([]string(nil), orgAdminActions...), Resource: "*",
+		Action: append([]string(nil), orgAdminActions...), Resource: star(),
 	}
 }
 
 // allowBoundaryEdit names the edit actions of the account's own boundary
 // policies. AllowAll already covers them; the statement states the intent.
-func (s *Spec) allowBoundaryEdit() statement {
-	return statement{
+func (s *Spec) allowBoundaryEdit() policy.Statement {
+	return policy.Statement{
 		Sid: "AllowBoundaryPolicyEdit", Effect: allow,
 		Action: []string{
 			"iam:CreatePolicy",
@@ -81,6 +83,7 @@ func (s *Spec) allowBoundaryEdit() statement {
 			"iam:SetDefaultPolicyVersion",
 		},
 		Resource: []string{s.arn(s.Prefix + "*")},
+		Arrays:   policy.ArrayResource,
 	}
 }
 
@@ -161,6 +164,6 @@ func memberOrgDeny() []string {
 	return out
 }
 
-func denyOrgAdmin() statement {
-	return statement{Sid: "DenyOrganizationAdmin", Effect: deny, Action: memberOrgDeny(), Resource: "*"}
+func denyOrgAdmin() policy.Statement {
+	return policy.Statement{Sid: "DenyOrganizationAdmin", Effect: deny, Action: memberOrgDeny(), Resource: star()}
 }
