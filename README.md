@@ -14,6 +14,7 @@ engine, preflight, drift) and on [k8s](https://github.com/truvity/k8s)
 | What | Where |
 | --- | --- |
 | Go module `github.com/truvity/aws-structure` | `go get github.com/truvity/aws-structure` |
+| Go module `github.com/truvity/aws-structure/policy`: a typed IAM policy document, standard library only | `go get github.com/truvity/aws-structure/policy` ([policy/README.md](policy/README.md)) |
 | `awsorgctl`, the command line | the release archives, or `go install github.com/truvity/aws-structure/cmd/awsorgctl@latest` |
 | `pkg/registry`: the schema, a strict loader and the validator | no cloud dependency |
 | `pkg/engine/{org,sso,iam,baseline,trail,guardduty}`: Pulumi components with documented child names | [docs/reference.md](docs/reference.md) |
@@ -150,6 +151,10 @@ just vuln           # reachable Go advisories (its own workflow in CI, not in ch
 Releases are a `v*` tag, which the shared release workflow turns into the
 Go module version and a GitHub Release. Automatic patch releases are not
 armed; the first release and every minor and major are hand-cut tags.
+
+`policy/` is its own Go module, versioned by `policy/vX.Y.Z` tags. Such a
+tag is not a `v*` tag and starts no workflow: the tag is the release, and
+the CHANGELOG section of that name is its notes.
 
 ## Licence
 
