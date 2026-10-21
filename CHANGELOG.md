@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.30.0
 
 - **`pkg/boundary`: `Spec.Extra`, boundaries a component declares as typed documents.** Additive and optional: a `Spec` without `Extra` renders every document it rendered before, byte for byte. A component returns a `policy.Document` (module `github.com/truvity/aws-structure/policy`, `policy/v0.1.0`); the caller passes `Extra{Name, Document, DelegatedBy, Delegates, Accounts}` and this package appends the estate's guards, so a component never writes them and can never leave them out.
   - **Guards.** `DenyBoundaryPolicyEdit` and `NoBoundaryDelete` on every Extra. With `Delegates`, `DenyCreateOrChangeWithoutAllowedBoundary` refuses creating a role or user, and putting a boundary on one, under any boundary but the exact `Delegates`. A leaf (no `Delegates`) gets the same deny without exception, unless its document already denies `iam:CreateRole`, `iam:CreateUser` and the two put-boundary actions for every resource by an explicit `Deny` (a conditional `Deny` counts), as the runners' runtime boundary does: the Extra built from that document renders exactly what `Names.Grun` renders, and a test holds it against `testdata/grun.json`. An Extra whose document uses one of the three guard Sids is refused.
