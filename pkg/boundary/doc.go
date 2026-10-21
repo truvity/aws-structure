@@ -46,6 +46,15 @@
 // stack's own roles (Spec.Grun.RolePrefix) to the listed services and creating
 // the listed service-linked roles. It cannot create a role or a user.
 //
+// Extra boundaries, passed in Spec.Extra, are declared by a component as a
+// typed policy.Document (github.com/truvity/aws-structure/policy): a name, the
+// component's statements, who delegates it and what it delegates. The package
+// appends the estate's guards (no edit of a boundary policy, no removal of a
+// boundary, and no role creation outside its exact delegates, or none at all for a
+// leaf), adds the name to its delegators' lists, and refuses a document over
+// IAM's 6,144 characters. Names.Grun and Spec.Grun are deprecated in favour of
+// an Extra.
+//
 // Spec.LegacyProjectNames renders the transition form of ProjectACK,
 // ProjectWorkload and RoleDeployer, which also accepts the names projects used
 // before the "<cluster>-<project>.<name>" rule.

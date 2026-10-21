@@ -45,6 +45,10 @@ type Names struct {
 	// Grun is the boundary of the roles the self-hosted runners stack
 	// (cdk-github-runners) creates; see GrunScope. Optional and independent of
 	// both generations: leave it empty to render none. Needs Spec.Grun.
+	//
+	// Deprecated: declare the boundary as an Extra, with the document the
+	// component returns (github.com/truvity/grun/boundary). Kept for one
+	// release.
 	Grun string
 }
 
@@ -118,7 +122,23 @@ type Spec struct {
 	// OrgAdminMode.
 	OrgAdmin OrgAdminMode
 	// Grun scopes the Grun boundary. Required when Names.Grun is set.
+	//
+	// Deprecated: declare the boundary as an Extra, with the document the
+	// component returns (github.com/truvity/grun/boundary). Kept for one
+	// release.
 	Grun GrunScope
+
+	// Extra lists boundaries a component declares as typed documents; see
+	// Extra. Optional.
+	Extra []Extra
+	// ExtraDelegators are the boundaries an Extra may name in DelegatedBy:
+	// an allow list, so that a component cannot make itself reachable from a
+	// boundary its author chose. Default: Names.RoleAdmin alone.
+	ExtraDelegators []string
+	// Account is the name of the account the documents are rendered for. An
+	// Extra whose Accounts is set and does not name it is left out, with its
+	// edges. Empty renders every Extra, whatever its Accounts.
+	Account string
 }
 
 // legacyNames returns the legacy generation by field name, in a stable order.
@@ -175,8 +195,10 @@ func (s *Spec) Validate() error {
 		errs = append(errs, errors.New("spec: no shape is named: set the legacy names (Names.Admin, ...) or the role names (Names.RoleAdmin, ...)"))
 	}
 
+	hier := s.hierarchy()
+
 	have := map[string]bool{}
-	for _, e := range s.Hierarchy {
+	for _, e := range hier {
 		have[e.Name] = true
 	}
 
@@ -216,6 +238,7 @@ func (s *Spec) Validate() error {
 	}
 
 	errs = append(errs, s.validateGrun()...)
+	errs = append(errs, s.validateExtras()...)
 
 	for _, n := range needEntries {
 		if n != "" && !have[n] {
@@ -270,6 +293,11 @@ func (s *Spec) validateDistinctNames() []error {
 	all := append([][2]string{{"Names.Default", s.Names.Default}, {"Names.EKSAutoNode", s.Names.EKSAutoNode}, {"Names.Grun", s.Names.Grun}},
 		append(s.legacyNames(), s.currentNames()...)...)
 
+	extras := s.extras()
+	for i := range extras {
+		all = append(all, [2]string{"Extra " + extras[i].Name, extras[i].Name})
+	}
+
 	for _, n := range all {
 		if n[1] == "" {
 			continue
@@ -298,6 +326,13 @@ func (s *Spec) leaves() map[string]bool {
 	}
 	delete(leaves, "") // an empty name is reported by the required-names check
 
+	extras := s.extras()
+	for i := range extras {
+		if len(extras[i].Delegates) == 0 {
+			leaves[extras[i].Name] = true
+		}
+	}
+
 	return leaves
 }
 
@@ -308,15 +343,17 @@ func (s *Spec) leaves() map[string]bool {
 func (s *Spec) validateHierarchy() []error {
 	var errs []error
 
-	adj := make(map[string][]string, len(s.Hierarchy))
-	for _, e := range s.Hierarchy {
+	hier := s.hierarchy()
+
+	adj := make(map[string][]string, len(hier))
+	for _, e := range hier {
 		adj[e.Name] = e.Delegates
 	}
 
 	leaves := s.leaves()
 	undefined := false
 
-	for _, e := range s.Hierarchy {
+	for _, e := range hier {
 		if strings.ContainsAny(e.Name, "*?") {
 			errs = append(errs, fmt.Errorf("spec: boundary name %q is a pattern: boundaries are named exactly", e.Name))
 		}
@@ -381,7 +418,7 @@ func (s *Spec) validateHierarchy() []error {
 		return nil
 	}
 
-	for _, e := range s.Hierarchy {
+	for _, e := range hier {
 		if colors[e.Name] == white {
 			if err := visit(e.Name, nil); err != nil {
 				errs = append(errs, err)
@@ -417,7 +454,9 @@ func (s *Spec) arn(name string) string {
 func (s *Spec) DelegateARNs(name string) []string {
 	var delegates []string
 
-	for _, e := range s.Hierarchy {
+	hier := s.hierarchy()
+
+	for _, e := range hier {
 		if e.Name != name {
 			continue
 		}
@@ -472,7 +511,7 @@ func (s *Spec) DelegateARNs(name string) []string {
 
 // EnforcedTags returns the tags a boundary requires on a created role.
 func (s *Spec) EnforcedTags(name string) []string {
-	for _, e := range s.Hierarchy {
+	for _, e := range s.hierarchy() {
 		if e.Name == name {
 			return e.EnforcesTags
 		}
@@ -744,7 +783,7 @@ func (s *Spec) auditAs(name string) (string, error) {
 // default, ACK IAM, CAPA, EKS Auto Mode node, deploy, project, audit), then the
 // role/controller/project shapes (role admin, role deployer, role auditor, the
 // five ACK controllers, the project builder, the employee builder, the project
-// workload), then Grun. A generation whose names are all empty is left out, except Default
+// workload), then Grun, then the Extra boundaries in the order given. A generation whose names are all empty is left out, except Default
 // and EKSAutoNode, which are always rendered. The viewer is deprecated (use the
 // default) and kept for existing roles; it is the default's document.
 func Policies(s Spec) ([]registry.Boundary, error) {
@@ -798,6 +837,15 @@ func Policies(s Spec) ([]registry.Boundary, error) {
 
 		out = append(out, registry.Boundary{Name: sh.name, Document: doc})
 	}
+
+	extra, extraErrs := s.extraPolicies()
+	errs = append(errs, extraErrs...)
+	out = append(out, extra...)
+
+	// The documents are fixed by what was rendered: the check is of the final
+	// size, guards included, and of every document, because a delegator grows
+	// by one entry for each boundary it delegates.
+	errs = append(errs, checkSizes(out)...)
 
 	if err := errors.Join(errs...); err != nil {
 		return nil, err

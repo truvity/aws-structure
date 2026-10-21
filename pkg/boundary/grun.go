@@ -11,6 +11,11 @@ import (
 // GrunScope configures the Grun boundary: the roles the self-hosted GitHub
 // runners stack (cdk-github-runners) may pass at run time. Every value is a
 // caller input.
+//
+// Deprecated: the stack declares its own boundaries
+// (github.com/truvity/grun/boundary, Runtime and Deploy) and the caller passes
+// them as Extra values. Names.Grun renders the same document as an Extra built
+// from boundary.Runtime. GrunScope is kept for one release.
 type GrunScope struct {
 	// RolePrefix is what the names of the stack's roles start with, such as
 	// "grun-": the only roles Grun may pass. The stack's roles are created by
