@@ -767,7 +767,9 @@ names; longer boundary names, a longer bucket prefix or more `ACK` entries use t
 the builder for that reason and because no project uses them yet; add a reviewed statement with the first user.
 Each document has a golden file in `pkg/boundary/testdata/current`; `go test ./pkg/boundary -update` rewrites them.
 
-### The runners boundary (`Grun`)
+### The runners boundary (`Grun`, deprecated)
+
+_Deprecated: declare the boundary as an `Extra` (next section), with the document the stack returns. `Names.Grun` and `Spec.Grun` stay for one release and render what the `Extra` of the same document renders._
 
 `Names.Grun` names one more boundary, optional and independent of both generations (leave it empty to render
 none; naming it changes no other document). It bounds the roles the self-hosted runners stack
@@ -788,6 +790,49 @@ removing a boundary. Both exceptions are carved out by the condition key that sc
 created by CloudFormation as the deploying human role, so the boundary is a leaf in the hierarchy and delegates
 nothing. `Validate` requires a hierarchy entry for it, refuses delegates on it, and refuses an empty scope. Its
 golden file is `pkg/boundary/testdata/grun.json`.
+
+### Extra boundaries: a component declares its own
+
+A component knows what its principals need; this package knows what the estate requires of every boundary. A
+component returns its boundary as a typed `policy.Document` (`github.com/truvity/aws-structure/policy`), and the
+caller passes it in `Spec.Extra`:
+
+```go
+spec.Extra = []boundary.Extra{{
+    Name:        "pb@tech-example",       // starts with Spec.ClassPrefix
+    Document:    componentDocument,         // policy.Document, the component's statements only
+    DelegatedBy: []string{"pb@role-admin"}, // who may attach it; each in Spec.ExtraDelegators
+    Delegates:   nil,                       // exact names it may create roles under; empty is a leaf
+    Accounts:    nil,                       // empty is every account
+}}
+```
+
+| Field | Rule |
+|---|---|
+| `Name` | starts with `Spec.ClassPrefix` and adds to it; no wildcard; at most 128 characters; IAM policy-name characters only; not the name of a built-in boundary, an entry of `Hierarchy`, or another `Extra` |
+| `Document` | passes `policy.Document.Validate`; no statement uses a reserved Sid (below) |
+| `DelegatedBy` | each name is in `Spec.ExtraDelegators` (default: `Names.RoleAdmin` alone) and is a boundary of the Spec. The delegator's list gets the Extra's exact name, so `RoleAdmin` grows by one ARN (about 45 characters plus the name) per Extra |
+| `Delegates` | exact names of boundaries of the Spec (a `Hierarchy` entry or another `Extra`); validated with the rest of the graph, so an undefined name, a pattern and a cycle are refused |
+| `Accounts` | optional. With `Spec.Account` set, an Extra that does not name that account is left out together with its edges; `Spec.Account` empty renders every Extra |
+
+`Policies` renders the Extra values after the built-ins, in the order given, and appends the estate's guards to a
+copy of each document (the Spec and the Extra are not changed):
+
+1. **A boundary with `Delegates`:** `DenyCreateOrChangeWithoutAllowedBoundary`, which refuses `iam:CreateRole`,
+   `iam:CreateUser` and the two put-boundary actions unless the boundary is one of the exact `Delegates`.
+2. **A leaf (no `Delegates`):** the same deny without an exception, so a leaf can never mint a role that is not
+   bounded, unless the document already denies those four actions for every resource by an explicit `Deny`
+   (a `Deny` with a condition counts: the component carved out its own exception). The check is by action name
+   and pattern, and does not evaluate IAM. This keeps a component whose document already carries the rule, such
+   as the runners' runtime boundary, byte for byte what it was.
+3. `DenyBoundaryPolicyEdit` and `NoBoundaryDelete`, as on every built-in.
+
+The three Sids above are reserved: an Extra that uses one is refused. After rendering, `Policies` refuses any
+document over IAM's 6,144 characters (`MaxDocumentSize`), parents included: a delegator grows with each Extra it
+delegates. `Validate` refuses a spec with `Extra` and no `ClassPrefix`, and with no delegator.
+
+Tests build a leaf and a non-leaf from fixtures, and show that the runners' runtime boundary rendered through an
+`Extra` is the document `Names.Grun` renders, as `testdata/grun.json`.
 
 ### One admin permission set for the whole organization
 
