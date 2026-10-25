@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.32.0
 
 - **`Fleet.StandaloneAuditors` and `sso.DeployInlinePolicies`.** Additive; nothing existing changes.
   - **`Fleet.StandaloneAuditors(ctx, logger, StandaloneAuditorsArgs{Accounts, Management, AccountIDs, Auditor, Names})`** deploys the auditor role as an `AccountIAM` named `vanta-<account>` through its own provider `vanta-provider-<account>`, for the accounts whose boundary-carrying `AccountIAM` carries no auditor: the management account (reached through the root profile) or a member `Skip` names. A member the fleet already gives an auditor, an account in neither the fleet nor `AccountIDs`, and a management account with no id are refused.
