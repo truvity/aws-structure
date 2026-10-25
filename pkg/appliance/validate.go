@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/truvity/aws-structure/pkg/bootstrap"
+	"github.com/truvity/aws-structure/pkg/bootstrap" //nolint:staticcheck // SA1019: deprecated, moved to truvity/asg/bootstrap
 )
 
 // partitionExpr is the partition part of an ARN. The ARN regexes are built

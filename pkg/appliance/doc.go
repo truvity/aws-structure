@@ -47,4 +47,8 @@
 // self-registering DNS, journald, swap are such modules). [Collect] merges
 // modules into a [Contribution] that [Args.Contribution] takes and that
 // [Contribution.AddTo] feeds to the plan. No module ships in this package.
+//
+// Deprecated: moved to github.com/truvity/asg (this package is its root
+// package, asg) as of asg v0.1.0; import that instead. This copy is no longer
+// updated and will be removed in a later minor release.
 package appliance

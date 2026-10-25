@@ -14,7 +14,7 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/aws-structure/pkg/appliance"
+	"github.com/truvity/aws-structure/pkg/appliance" //nolint:staticcheck // SA1019: deprecated, moved to truvity/asg
 )
 
 var update = flag.Bool("update", false, "rewrite the golden files")

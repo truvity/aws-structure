@@ -42,4 +42,8 @@
 //
 // Mechanism only. Packages, URLs, digests, parameter names, buckets and
 // groups are inputs. The package has no Pulumi or AWS import.
+//
+// Deprecated: moved to github.com/truvity/asg/bootstrap as of asg v0.1.0;
+// import that instead. This copy is no longer updated and will be removed in a
+// later minor release.
 package bootstrap

@@ -15,7 +15,7 @@ import (
 	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws/ssm"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/aws-structure/pkg/bootstrap"
+	"github.com/truvity/aws-structure/pkg/bootstrap" //nolint:staticcheck // SA1019: deprecated, moved to truvity/asg/bootstrap
 )
 
 // Appliance is what [New] creates. With [Compat.Flat] it is a plain holder

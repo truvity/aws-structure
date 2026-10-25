@@ -1,6 +1,6 @@
 package appliance
 
-import "github.com/truvity/aws-structure/pkg/bootstrap"
+import "github.com/truvity/aws-structure/pkg/bootstrap" //nolint:staticcheck // SA1019: deprecated, moved to truvity/asg/bootstrap
 
 // Resolved are the physical names after defaults.
 type Resolved struct {
