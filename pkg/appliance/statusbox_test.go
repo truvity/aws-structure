@@ -9,8 +9,8 @@ import (
 
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/aws-structure/pkg/appliance"
-	"github.com/truvity/aws-structure/pkg/bootstrap"
+	"github.com/truvity/aws-structure/pkg/appliance" //nolint:staticcheck // SA1019: deprecated, moved to truvity/asg
+	"github.com/truvity/aws-structure/pkg/bootstrap" //nolint:staticcheck // SA1019: deprecated, moved to truvity/asg/bootstrap
 )
 
 // The status box (truvity/observability pkg/statusbox/ec2, consumed by

@@ -4,7 +4,7 @@ import (
 	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 
-	"github.com/truvity/aws-structure/pkg/bootstrap"
+	"github.com/truvity/aws-structure/pkg/bootstrap" //nolint:staticcheck // SA1019: deprecated, moved to truvity/asg/bootstrap
 )
 
 // Defaults.

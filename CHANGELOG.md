@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- **Deprecated: `pkg/appliance` and `pkg/bootstrap`** moved to `github.com/truvity/asg` v0.1.0, unchanged. Import `github.com/truvity/asg` and `github.com/truvity/asg/bootstrap`; these copies get no further changes and will be removed in a later minor release.
+
 ## v0.32.0
 
 - **`Fleet.StandaloneAuditors` and `sso.DeployInlinePolicies`.** Additive; nothing existing changes.

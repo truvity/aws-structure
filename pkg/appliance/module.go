@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/truvity/aws-structure/pkg/bootstrap"
+	"github.com/truvity/aws-structure/pkg/bootstrap" //nolint:staticcheck // SA1019: deprecated, moved to truvity/asg/bootstrap
 )
 
 // Module is an optional piece of an appliance that touches several layers at
