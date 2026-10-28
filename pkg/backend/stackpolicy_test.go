@@ -13,7 +13,7 @@ func scope() backend.StackScope {
 		Project:        "proj",
 		Stack:          "stk",
 		Bucket:         "state-bucket",
-		KeyARN:         "arn:test:kms:eu-west-1:000000000001:key/k",
+		KeyARN:         "arn:test:kms:eu-west-1:123456:key/k",
 		Region:         "eu-west-1",
 		SecretsContext: map[string]string{"purpose": "p", "org": "stk"},
 		Partition:      "test",
