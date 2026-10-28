@@ -3,6 +3,12 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- **`backend.StackPolicyStatements(StackScope)` and `pkg/iamtrust`.** Additive; nothing existing changes.
+  - **`backend.StackPolicyStatements(StackScope{Project, Stack, Bucket, KeyARN, Region, SecretsContext, Partition})`** returns the IAM policy statements that confine a role to ONE stack of a DIY S3 Pulumi backend: that stack's state, tags, history, backups and locks (only locks may be deleted), the backend's `meta.yaml`, `s3:ListBucket`, the state key through S3 (`kms:ViaService` and `kms:EncryptionContext:aws:s3:arn`, for that stack's objects only) and the state key for the stack's secrets under exactly the `SecretsContext` pairs. The caller adds its own statements and marshals; `StackScope.StackObjects`, `LockObjects` and `BucketARN` expose the paths. `Partition` empty means `aws`.
+  - **`iamtrust.Policy(partition, accountID, issuerHost, audience)`** returns the trust policy of a role assumed with a token from an OIDC identity provider in the account (`sts:AssumeRoleWithWebIdentity`, `sts:TagSession`, `sts:SetSourceIdentity`, pinned to `<issuerHost>:aud`).
+
 ## v0.33.0
 
 - **`pkg/ssmaudit`: the read-only SSM Parameter Store audit.** Additive; nothing existing changes. `Audit(ctx, Config{ConfigFile, Role, ExtraRegion, Declared, List})` reads the AWS CLI config, groups the profiles named `<anything>@<Role>` by account id (two profiles that name one account are one account, visited once per region), tries each account's profiles in order until one can list, and returns a `Result{Declared, Undeclared, Skipped}`: the parameter names `Declared` does not explain, and the accounts and regions no profile could read. It never deletes anything. `Declared` (a `func(name string) bool`), `Role`, `ExtraRegion` and the closing hint of `Result.Write` are the caller's; `SSMLister(configFile)` is the real lister over `DescribeParameters`, `ListParameters(ctx, api)` pages any client that satisfies `DescribeParametersAPI`, and a test passes a fake `Lister`. New dependencies: `service/ssm` and `gopkg.in/ini.v1`. There is no `awsorgctl` subcommand: the declared-path predicate is code, not a registry field, so a command would have to invent a path syntax.
