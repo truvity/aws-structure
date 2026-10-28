@@ -3,9 +3,11 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.34.0
 
-- **`backend.StackPolicyStatements(StackScope)` and `pkg/iamtrust`.** Additive; nothing existing changes.
+- **`backend.StackPolicyStatements(StackScope)` (new): the IAM statements that confine a role to ONE stack of a self-managed S3 Pulumi backend.** Read and write that stack's state, history, backups and tags objects; release its own locks; read `.pulumi/meta.yaml`; list the bucket; use the state key through S3 for those objects only; and use it directly only under the stack's own encryption context (`StackScope.SecretsContext`, required). `StackScope.StackObjects` and `LockObjects` name the object patterns. Statement ids are stable, so a consumer's rendered policy does not change when it switches.
+- **`pkg/iamtrust` (new): `Policy(partition, accountID, issuerHost, audience)`, the trust policy of a role assumed with a web identity token from an OIDC issuer** (the issuer's provider in the account, `sts:AssumeRoleWithWebIdentity`, the audience pinned). Empty inputs are refused; an empty partition means `aws`.
+- Additive; nothing existing changes.
   - **`backend.StackPolicyStatements(StackScope{Project, Stack, Bucket, KeyARN, Region, SecretsContext, Partition})`** returns the IAM policy statements that confine a role to ONE stack of a DIY S3 Pulumi backend: that stack's state, tags, history, backups and locks (only locks may be deleted), the backend's `meta.yaml`, `s3:ListBucket`, the state key through S3 (`kms:ViaService` and `kms:EncryptionContext:aws:s3:arn`, for that stack's objects only) and the state key for the stack's secrets under exactly the `SecretsContext` pairs. The caller adds its own statements and marshals; `StackScope.StackObjects`, `LockObjects` and `BucketARN` expose the paths. `Partition` empty means `aws`.
   - **`iamtrust.Policy(partition, accountID, issuerHost, audience)`** returns the trust policy of a role assumed with a token from an OIDC identity provider in the account (`sts:AssumeRoleWithWebIdentity`, `sts:TagSession`, `sts:SetSourceIdentity`, pinned to `<issuerHost>:aud`).
 
