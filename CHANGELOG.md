@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.33.0
 
 - **`pkg/ssmaudit`: the read-only SSM Parameter Store audit.** Additive; nothing existing changes. `Audit(ctx, Config{ConfigFile, Role, ExtraRegion, Declared, List})` reads the AWS CLI config, groups the profiles named `<anything>@<Role>` by account id (two profiles that name one account are one account, visited once per region), tries each account's profiles in order until one can list, and returns a `Result{Declared, Undeclared, Skipped}`: the parameter names `Declared` does not explain, and the accounts and regions no profile could read. It never deletes anything. `Declared` (a `func(name string) bool`), `Role`, `ExtraRegion` and the closing hint of `Result.Write` are the caller's; `SSMLister(configFile)` is the real lister over `DescribeParameters`, `ListParameters(ctx, api)` pages any client that satisfies `DescribeParametersAPI`, and a test passes a fake `Lister`. New dependencies: `service/ssm` and `gopkg.in/ini.v1`. There is no `awsorgctl` subcommand: the declared-path predicate is code, not a registry field, so a command would have to invent a path syntax.
 - **Deprecated: `pkg/appliance` and `pkg/bootstrap`** moved to `github.com/truvity/asg` v0.1.0, unchanged. Import `github.com/truvity/asg` and `github.com/truvity/asg/bootstrap`; these copies get no further changes and will be removed in a later minor release.
