@@ -12,12 +12,14 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/identitystore v1.49.1
 	github.com/aws/aws-sdk-go-v2/service/organizations v1.62.0
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.70.1
+	github.com/aws/aws-sdk-go-v2/service/ssm v1.80.0
 	github.com/aws/aws-sdk-go-v2/service/ssoadmin v1.49.4
 	github.com/aws/aws-sdk-go-v2/service/sts v1.51.1
 	github.com/pulumi/pulumi-aws/sdk/v7 v7.48.0
 	github.com/pulumi/pulumi/sdk/v3 v3.264.0
 	github.com/truvity/aws-structure/policy v0.1.0
 	go.yaml.in/yaml/v3 v3.0.5
+	gopkg.in/ini.v1 v1.67.3
 )
 
 require (
