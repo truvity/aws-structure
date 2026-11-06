@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- `github.com/klauspost/compress` v1.20.3, which fixes GO-2026-6865 (a panic decoding two-block frames).
+
 ## v0.34.0
 
 - **`backend.StackPolicyStatements(StackScope)` (new): the IAM statements that confine a role to ONE stack of a self-managed S3 Pulumi backend.** Read and write that stack's state, history, backups and tags objects; release its own locks; read `.pulumi/meta.yaml`; list the bucket; use the state key through S3 for those objects only; and use it directly only under the stack's own encryption context (`StackScope.SecretsContext`, required). `StackScope.StackObjects` and `LockObjects` name the object patterns. Statement ids are stable, so a consumer's rendered policy does not change when it switches.
