@@ -146,8 +146,7 @@ registry parser's own tests, by path, with the reason in the script.
 ## Status
 
 v0: the API may still move in a minor release, and every move is a
-`Breaking:` bullet in the [CHANGELOG](CHANGELOG.md). The current version is on the
-[releases page](https://github.com/truvity/aws-structure/releases). Present: the registry,
+`Breaking:` bullet in the [CHANGELOG](CHANGELOG.md). Present: the registry,
 the engine (the organization is looked up only; SCPs are dormant), the
 preflight, drift and the access-roles map, the `aws.ini` renderer, ssosync
 (Google Workspace to Identity Center groups) and `awsorgctl`. Next, each its
