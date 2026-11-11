@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // StackScope names ONE stack of a DIY (S3) Pulumi backend and the state key
@@ -14,6 +15,11 @@ type StackScope struct {
 	Stack   string
 	// Bucket is the state bucket's name (see BucketName). Required.
 	Bucket string
+	// Prefix is the path inside the bucket that the backend URL names
+	// (`s3://<bucket>/<prefix>`): the backend then keeps its `.pulumi/` under
+	// it, so several backends can share one bucket. Without leading or
+	// trailing slash. Empty: the backend is the bucket's root.
+	Prefix string
 	// KeyARN is the ARN of the KMS key the bucket encrypts with and the stack's
 	// secrets provider uses. Required.
 	KeyARN string
@@ -58,24 +64,56 @@ func (s StackScope) Validate() error {
 		return errors.New("stack scope: Region is required")
 	case len(s.SecretsContext) == 0:
 		return errors.New("stack scope: SecretsContext is required (a shared key must tell stacks apart)")
+	case s.Prefix != "" && !validPrefix(s.Prefix):
+		return fmt.Errorf("stack scope: Prefix %q must be a plain path inside the bucket: "+
+			"no leading or trailing slash, no empty, `.` or `..` segment, no wildcard", s.Prefix)
 	}
 
 	return nil
 }
 
+// validPrefix reports whether p is a path a statement can name literally: it
+// goes into object ARNs, where a wildcard or a `..` would widen the scope.
+func validPrefix(p string) bool {
+	if strings.ContainsAny(p, "*?") {
+		return false
+	}
+
+	for _, segment := range strings.Split(p, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return false
+		}
+	}
+
+	return true
+}
+
+// root is where the backend keeps its objects, relative to the bucket: the
+// prefix and a slash, or nothing.
+func (s StackScope) root() string {
+	if s.Prefix == "" {
+		return ""
+	}
+
+	return s.Prefix + "/"
+}
+
 // StackObjects are the state objects of the stack in the DIY backend's project
-// layout (pulumi pkg/backend/diy), relative to the bucket: the stack file and
+// layout (pulumi pkg/backend/diy), relative to the bucket (under Prefix, when
+// the backend has one): the stack file and
 // its backup (`<stack>.json`, `.json.bak`, `.json.gz`, `.json.zst`), its tags
 // file, its history, its backups and its locks (which the backend keys by the
 // stack's fully qualified name, `organization/<project>/<stack>`).
 func (s StackScope) StackObjects() []string {
 	p, st := s.Project, s.Stack
 
+	r := s.root()
+
 	return []string{
-		".pulumi/stacks/" + p + "/" + st + ".json*",
-		".pulumi/stacks/" + p + "/" + st + ".pulumi-tags",
-		".pulumi/history/" + p + "/" + st + "/*",
-		".pulumi/backups/" + p + "/" + st + "/*",
+		r + ".pulumi/stacks/" + p + "/" + st + ".json*",
+		r + ".pulumi/stacks/" + p + "/" + st + ".pulumi-tags",
+		r + ".pulumi/history/" + p + "/" + st + "/*",
+		r + ".pulumi/backups/" + p + "/" + st + "/*",
 		s.LockObjects(),
 	}
 }
@@ -83,7 +121,7 @@ func (s StackScope) StackObjects() []string {
 // LockObjects is where the backend writes the stack's locks, relative to the
 // bucket.
 func (s StackScope) LockObjects() string {
-	return ".pulumi/locks/organization/" + s.Project + "/" + s.Stack + "/*"
+	return s.root() + ".pulumi/locks/organization/" + s.Project + "/" + s.Stack + "/*"
 }
 
 // BucketARN is the state bucket's ARN.
@@ -103,7 +141,9 @@ func (s StackScope) arn() string {
 // release its locks (the one object a run deletes), read the backend's
 // meta.yaml, list the bucket, use the state key through S3 for those objects
 // only, and use the key directly for the stack's secrets under SecretsContext
-// only. Nothing else: no other stack, no IAM.
+// only. Nothing else: no other stack, no IAM. With a Prefix the objects are
+// the ones of the backend under that path, and no other backend's in the
+// bucket.
 //
 // The statements are plain maps, in a fixed order, ready to be put under a
 // policy document's Statement (with Version 2012-10-17); the caller adds its
@@ -161,7 +201,7 @@ func StackPolicyStatements(s StackScope) ([]map[string]any, error) {
 			"Sid":      "ReadTheBackendsMeta",
 			"Effect":   "Allow",
 			"Action":   stackS3GetObject,
-			"Resource": bucketARN + "/.pulumi/meta.yaml",
+			"Resource": bucketARN + "/" + s.root() + ".pulumi/meta.yaml",
 		},
 		{
 			"Sid":      "ListTheStateBucket",
