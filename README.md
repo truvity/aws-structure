@@ -98,10 +98,13 @@ stacks: the organizational units, accounts, Identity Center, the account
 baselines, the permission boundaries and the Pulumi state storage
 ([docs/reference.md](docs/reference.md), [docs/safety.md](docs/safety.md)).
 
-**Company part.** None today. The delegation model in
-[policy](https://github.com/truvity/policy) lists a company's limit roles
-and, later, its own AWS organisation as the company's AWS work. A registry
-a company applies is its own file in its own private repository
+**Company part.** None applied from this repository today, which has no
+limit-role component. The
+[delegation model](https://github.com/truvity/policy/blob/master/docs/delegation-model.md)
+puts a company's limit roles in its own nexus repository, and later its own
+AWS organisation, but only the platform team applies those stacks until the
+guard in the AWS organisation exists and the stack has moved; a registry file
+is the caller's own, kept in the caller's private repository
 ([the rule that makes this repository public](#the-rule-that-makes-this-repository-public)).
 
 ## Consumers
