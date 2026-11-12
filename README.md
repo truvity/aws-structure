@@ -20,7 +20,8 @@ engine, preflight, drift) and on [k8s](https://github.com/truvity/k8s)
 | `pkg/engine/{org,sso,iam,baseline,trail,guardduty,cdkbootstrap}`: Pulumi components with documented child names | [docs/reference.md](docs/reference.md) |
 | `pkg/preflight`: the refusals in front of an apply | [docs/safety.md](docs/safety.md) |
 | `pkg/drift`: the live read-back and the access-roles map | read only |
-| `pkg/fleet`, `pkg/boundary`, `pkg/cdkbootstrap`, `pkg/alerting`, `pkg/cost`, `pkg/backend`, `pkg/dns`, `pkg/ssosync`, `pkg/awsconfig`, `pkg/awsprofile`, `pkg/bootstrap`, `pkg/appliance` | the estate-wide pieces an organization's root stacks are built from ([docs/reference.md](docs/reference.md)) |
+| `pkg/fleet`, `pkg/boundary`, `pkg/cdkbootstrap`, `pkg/alerting`, `pkg/cost`, `pkg/backend`, `pkg/dns`, `pkg/ssosync`, `pkg/ssmaudit`, `pkg/iamtrust`, `pkg/awsconfig`, `pkg/awsprofile` | the estate-wide pieces an organization's root stacks are built from ([docs/reference.md](docs/reference.md)) |
+| `pkg/bootstrap`, `pkg/appliance` | deprecated: they moved to [asg](https://github.com/truvity/asg) (`github.com/truvity/asg` and `github.com/truvity/asg/bootstrap`), these copies get no further changes and a later minor release removes them ([CHANGELOG](CHANGELOG.md), v0.33.0) |
 
 ## Who it is for
 
@@ -89,9 +90,26 @@ awsorgctl aws-ini      -registry registry.yaml -start-url <portal URL> -sso-regi
 Nothing it runs writes to AWS. `preflight` exits 1 on a refusal and
 `drift -fail` on drift, so either can gate a pipeline.
 
+## Platform part and company part
+
+**Platform part.** The platform admin applies the registry through the
+engine components and the estate-wide packages in an organization's root
+stacks: the organizational units, accounts, Identity Center, the account
+baselines, the permission boundaries and the Pulumi state storage
+([docs/reference.md](docs/reference.md), [docs/safety.md](docs/safety.md)).
+
+**Company part.** None applied from this repository today, which has no
+limit-role component. The
+[delegation model](https://github.com/truvity/policy/blob/master/docs/delegation-model.md)
+puts a company's limit roles in its own nexus repository, and later its own
+AWS organisation, but only the platform team applies those stacks until the
+guard in the AWS organisation exists and the stack has moved; a registry file
+is the caller's own, kept in the caller's private repository
+([the rule that makes this repository public](#the-rule-that-makes-this-repository-public)).
+
 ## Consumers
 
-None recorded at v0. A repository that adopts it adds a line here.
+The maintainers' platform repository: the Go module and `awsorgctl`.
 
 ## Neighbours
 
@@ -111,8 +129,8 @@ None recorded at v0. A repository that adopts it adds a line here.
 - [docs/reference.md](docs/reference.md) — the registry, field by field,
   and every refusal.
 - [docs/safety.md](docs/safety.md) — what is refused and why.
-- [docs/decisions/0003-bootstrap.md](docs/decisions/0003-bootstrap.md) — the cloud-init user-data composer (`pkg/bootstrap`).
-- [docs/decisions/0004-appliance.md](docs/decisions/0004-appliance.md) — the EC2 appliance: group, launch template, role, hook, security group (`pkg/appliance`).
+- [docs/decisions/0003-bootstrap.md](docs/decisions/0003-bootstrap.md) — the cloud-init user-data composer (`pkg/bootstrap`, deprecated: moved to asg).
+- [docs/decisions/0004-appliance.md](docs/decisions/0004-appliance.md) — the EC2 appliance: group, launch template, role, hook, security group (`pkg/appliance`, deprecated: moved to asg).
 - [docs/doctrine.md](docs/doctrine.md) — why it is shaped this way.
 - [docs/decisions/](docs/decisions/) — the decisions, one page each.
 - [SECURITY.md](SECURITY.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
