@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- **`pkg/engine/orgtrail` (new): `truvity:aws-structure:OrgTrail`, an AWS organisation trail whose bucket and key live in a separate logs account.** Additive; nothing existing changes. Two providers: the trail (organisation-wide, multi-region, log file validation, management events only) is created in the management account; the log bucket and its own KMS key are created in the logs account. The bucket is created with Object Lock (a default retention of `RetentionDays` in `GOVERNANCE` or `COMPLIANCE` mode), versioning, SSE-KMS, a public access block, `BucketOwnerEnforced` and a lifecycle; the key and bucket policies name the one trail ARN, the key policy has no account-root statement (`KeyAdministrators` are named principals) and optional `Readers` get read access to both. Under `GOVERNANCE`, `BypassGovernancePrincipals` are the only principals the bucket policy lets bypass the lock; `COMPLIANCE` can never be shortened or removed by anyone. `Region` and `Partition` are arguments, not looked up. Prerequisites the component does not provide: trusted access for `cloudtrail.amazonaws.com` enabled in the organisation, the trail created from the management account, and the reader roles already existing.
+
 ## v0.35.1
 
 - **Fix: `iam.New` creates the auditor role only after the account's boundary policies.** The role names its boundary by an ARN string, which carried no dependency, so in a new account Pulumi created the role and the boundary together and IAM refused the role (`NoSuchEntity: Scope ARN ... does not exist or is not attachable`). The role now depends on the boundaries of its own `AccountIAM`. Nothing changes for an existing account: a dependency is not a diff.

@@ -349,6 +349,61 @@ trail ARN, data-event resource, replication role name or permissions boundary;
 a `DataEventExclusions` entry that is not an S3 object ARN prefix; a key alias that is empty or lacks the `alias/` prefix; and a naming hook
 returning an empty or repeated name.
 
+## `pkg/engine/orgtrail`
+
+`truvity:aws-structure:OrgTrail` deploys an organisation trail across two
+accounts: the trail in the management account, its log bucket and its own KMS
+key in a separate logs account. See the package documentation for the
+prerequisites the component does not provide (trusted access for
+`cloudtrail.amazonaws.com`, the trail created from the management account,
+reader roles that already exist).
+
+```go
+c, err := orgtrail.New(ctx, "org-trail", &orgtrail.Args{
+	ManagementAccount:   "management",
+	LogsAccount:         "logs",
+	ManagementAccountID: managementID,   // 12 digits
+	OrganizationID:      orgID,          // o-...
+	TrailName:           "org-trail",    // physical name; the policies name its ARN
+	Region:              "eu-west-1",    // of ManagementProvider; Partition empty = "aws"
+	Bucket:              bucketName,     // global name, the caller's
+	KeyAlias:            "alias/org-trail",
+	KeyAdministrators:   []pulumi.StringInput{deployRoleARN}, // no account-root statement
+	Readers:             []pulumi.StringInput{readerRoleARN},  // optional; must exist
+	RetentionDays:       365,
+	RetentionMode:       orgtrail.Governance, // COMPLIANCE can never be shortened by anyone
+	BypassGovernancePrincipals: []string{repairRolePattern},  // required under GOVERNANCE
+	GlacierAfterDays:    90,             // optional; must be < RetentionDays
+	ManagementProvider:  managementProvider,
+	LogsProvider:        logsProvider,
+})
+// c.BucketName, c.BucketArn, c.KeyArn, c.TrailArn
+```
+
+Children (registered under the component, none protected or retained):
+
+| Child | Type | Default name | Provider |
+| --- | --- | --- | --- |
+| Key | `aws:kms/key:Key` | `<c>-kms-key` | LogsProvider; rotation on; no account-root statement |
+| Key alias | `aws:kms/alias:Alias` | `<c>-kms-alias` | LogsProvider |
+| Bucket | `aws:s3/bucket:Bucket` | `<c>-bucket` | LogsProvider; created with Object Lock (only possible at creation) |
+| Versioning | `aws:s3/bucketVersioningV2:BucketVersioningV2` | `<c>-versioning` | LogsProvider; Enabled |
+| Object Lock | `aws:s3/bucketObjectLockConfigurationV2:BucketObjectLockConfigurationV2` | `<c>-object-lock` | LogsProvider; default retention with the mode and days |
+| Public access block | `aws:s3/bucketPublicAccessBlock:BucketPublicAccessBlock` | `<c>-public-access-block` | LogsProvider |
+| Encryption | `aws:s3/bucketServerSideEncryptionConfigurationV2:BucketServerSideEncryptionConfigurationV2` | `<c>-sse` | LogsProvider; SSE-KMS with the key, bucket key on |
+| Ownership | `aws:s3/bucketOwnershipControls:BucketOwnershipControls` | `<c>-ownership` | LogsProvider; `BucketOwnerEnforced` |
+| Lifecycle | `aws:s3/bucketLifecycleConfigurationV2:BucketLifecycleConfigurationV2` | `<c>-lifecycle` | LogsProvider; optional Glacier transition, expire at `RetentionDays`, noncurrent versions after 1 day, abort multipart after 7 |
+| Bucket policy | `aws:s3/bucketPolicy:BucketPolicy` | `<c>-bucket-policy` | LogsProvider; CloudTrail for the one trail, readers, TLS only, bypass deny under GOVERNANCE |
+| Trail | `aws:cloudtrail/trail:Trail` | `<c>-trail` | ManagementProvider; organisation, multi-region, log file validation, global service events, management events only; depends on the bucket, its policy, the key and the Object Lock configuration |
+
+Refused before anything is registered, all reported at once: a missing account
+name, provider, account id, organisation id, trail name, region, bucket or key
+administrator; a malformed account id, organisation id, region, partition or
+trail name; a key alias without the `alias/` prefix; a retention period that
+is not positive or a mode other than `GOVERNANCE` or `COMPLIANCE`; an empty or
+non-ARN bypass list under `GOVERNANCE`; a Glacier transition at or after the
+end of retention; and a naming hook returning an empty or repeated name.
+
 ## `pkg/engine/guardduty`
 
 `truvity:aws-structure:AccountRegionGuardDuty` deploys the alerting for
