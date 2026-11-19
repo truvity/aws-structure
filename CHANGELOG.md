@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- **Fix: `iam.New` creates the auditor role only after the account's boundary policies.** The role names its boundary by an ARN string, which carried no dependency, so in a new account Pulumi created the role and the boundary together and IAM refused the role (`NoSuchEntity: Scope ARN ... does not exist or is not attachable`). The role now depends on the boundaries of its own `AccountIAM`. Nothing changes for an existing account: a dependency is not a diff.
+
 ## v0.35.0
 
 - **`backend.StackScope.Prefix` (new): `StackPolicyStatements` for a backend that lives under a path of its bucket** (`s3://<bucket>/<prefix>`, several backends in one bucket). The stack's objects, its locks and the backend's `meta.yaml` are then named under `<prefix>/.pulumi/`, and the bucket's root backend is not reachable. A prefix is a plain path: a leading or trailing slash, an empty, `.` or `..` segment or a wildcard is refused. Additive; an empty `Prefix` returns the same statements as before.

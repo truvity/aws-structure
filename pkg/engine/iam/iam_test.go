@@ -19,6 +19,7 @@ type registration struct {
 	noParentAlias               bool
 	protect                     bool
 	inputs                      resource.PropertyMap
+	dependencies                []string
 }
 
 type recorder struct {
@@ -33,6 +34,7 @@ func (r *recorder) NewResource(args pulumi.MockResourceArgs) (string, resource.P
 		reg.parent = rpc.GetParent()
 		reg.provider = rpc.GetProvider()
 		reg.protect = rpc.GetProtect()
+		reg.dependencies = rpc.GetDependencies()
 
 		for _, a := range rpc.GetAliases() {
 			if spec := a.GetSpec(); spec != nil && spec.GetName() == "" && spec.GetNoParent() {
@@ -201,6 +203,45 @@ func TestChildrenAreUnderTheComponentWithProviderAndAlias(t *testing.T) {
 
 		if !strings.Contains(c.provider, "::p::") {
 			t.Errorf("%s: provider %q is not p", c.name, c.provider)
+		}
+	}
+}
+
+// TestAuditorRoleWaitsForTheBoundaries: the role names its boundary by an ARN
+// string, which carries no dependency, so it must depend on the boundary
+// policies explicitly. In a new account IAM refuses the role otherwise
+// (NoSuchEntity: "Scope ARN ... does not exist or is not attachable").
+func TestAuditorRoleWaitsForTheBoundaries(t *testing.T) {
+	for _, useBP := range []bool{false, true} {
+		regs, err := run(t, full(), false, useBP)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var role *registration
+
+		for i := range regs {
+			if regs[i].typ == "aws:iam/role:Role" {
+				role = &regs[i]
+			}
+		}
+
+		if role == nil {
+			t.Fatal("no auditor role registered")
+		}
+
+		for _, b := range []string{"bound-a", "bound-b"} {
+			found := false
+
+			for _, d := range role.dependencies {
+				if strings.HasSuffix(d, "::iam-acct-boundary-"+b) {
+					found = true
+				}
+			}
+
+			if !found {
+				t.Errorf("boundary provider %v: role does not depend on boundary %s; dependencies %v", useBP, b, role.dependencies)
+			}
 		}
 	}
 }
