@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.35.1
 
 - **Fix: `iam.New` creates the auditor role only after the account's boundary policies.** The role names its boundary by an ARN string, which carried no dependency, so in a new account Pulumi created the role and the boundary together and IAM refused the role (`NoSuchEntity: Scope ARN ... does not exist or is not attachable`). The role now depends on the boundaries of its own `AccountIAM`. Nothing changes for an existing account: a dependency is not a diff.
 
