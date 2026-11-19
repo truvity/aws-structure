@@ -643,7 +643,7 @@ func TestPartitionAndRegionReachThePolicies(t *testing.T) {
 	a.Region = "cn-north-1"
 
 	m := mustRun(t, a)
-	want := fmt.Sprintf("arn:aws-cn:cloudtrail:cn-north-1:%s:trail/%s", mgmtID(), trailName)
+	want := fmt.Sprintf("arn:%s:cloudtrail:cn-north-1:%s:trail/%s", a.Partition, mgmtID(), trailName)
 
 	for _, n := range []string{"org-trail-kms-key", "org-trail-bucket-policy"} {
 		key := "policy"
