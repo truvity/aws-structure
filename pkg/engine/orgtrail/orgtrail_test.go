@@ -505,8 +505,8 @@ func TestKeyPolicy(t *testing.T) {
 		t.Errorf("describe %v", desc)
 	}
 
-	if got := cond(desc, "StringEquals", "aws:SourceArn"); got != trailARN() {
-		t.Errorf("describe SourceArn = %v", got)
+	if desc["Condition"] != nil {
+		t.Errorf("describe carries a condition %v; CloudTrail validates the key with an unconditioned DescribeKey", desc["Condition"])
 	}
 
 	rd := d.sid(t, "AllowReadersDecrypt")
@@ -591,6 +591,10 @@ func TestBucketPolicy(t *testing.T) {
 	}
 }
 
+// TestEveryCloudTrailStatementNamesTheTrail: every statement that grants
+// CloudTrail something that writes or reads is limited to this trail. The one
+// exception is kms:DescribeKey, which CloudTrail calls unconditioned to
+// validate the key when it creates the trail.
 func TestEveryCloudTrailStatementNamesTheTrail(t *testing.T) {
 	_, kd := keyPolicyOf(t, full())
 	_, bd := bucketPolicyOf(t, full())
@@ -600,7 +604,7 @@ func TestEveryCloudTrailStatementNamesTheTrail(t *testing.T) {
 	for _, d := range []policyDoc{kd, bd} {
 		for _, s := range d.Statement {
 			p, ok := s["Principal"].(map[string]any)
-			if !ok || p["Service"] != "cloudtrail.amazonaws.com" {
+			if !ok || p["Service"] != "cloudtrail.amazonaws.com" || s["Action"] == "kms:DescribeKey" {
 				continue
 			}
 
@@ -612,8 +616,8 @@ func TestEveryCloudTrailStatementNamesTheTrail(t *testing.T) {
 		}
 	}
 
-	if n != 4 {
-		t.Errorf("CloudTrail statements = %d, want 4", n)
+	if n != 3 {
+		t.Errorf("CloudTrail statements = %d, want 3", n)
 	}
 }
 

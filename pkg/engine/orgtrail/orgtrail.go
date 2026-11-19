@@ -761,9 +761,10 @@ func keyPolicy(partition, trailARN, mgmtID string, admins, readers []string) (st
 			Principal: map[string]string{"Service": cloudTrailSvc},
 			Action:    "kms:DescribeKey",
 			Resource:  "*",
-			Condition: map[string]any{
-				"StringEquals": map[string]string{"aws:SourceArn": trailARN},
-			},
+			// No condition: CloudTrail validates the key with DescribeKey when
+			// it creates or updates the trail, and AWS documents this
+			// statement unconditioned. GenerateDataKey* above carries the
+			// trail ARN conditions that limit writes.
 		},
 	}
 
