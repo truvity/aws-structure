@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"slices"
 
 	"github.com/pulumi/pulumi-aws/sdk/v7/go/aws/iam"
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
@@ -413,18 +414,28 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 		bp = args.Provider
 	}
 
+	// The boundaries are kept so the auditor role waits for them: its
+	// PermissionsBoundary is an ARN string, which carries no dependency, and
+	// in a new account IAM refuses a role whose boundary policy does not
+	// exist yet (NoSuchEntity: "Scope ARN ... does not exist or is not
+	// attachable").
+	boundaries := make([]pulumi.Resource, 0, len(args.Boundaries))
+
 	for _, b := range args.Boundaries {
-		if _, err := iam.NewPolicy(ctx, names(Child{Component: name, Kind: KindBoundary, Account: args.Account, Name: b.Name}),
+		policy, err := iam.NewPolicy(ctx, names(Child{Component: name, Kind: KindBoundary, Account: args.Account, Name: b.Name}),
 			&iam.PolicyArgs{
 				Name:   pulumi.String(b.Name),
 				Policy: pulumi.String(b.Document),
-			}, childOpts(bp)...); err != nil {
+			}, childOpts(bp)...)
+		if err != nil {
 			return nil, fmt.Errorf("create boundary %s in %s: %w", b.Name, args.Account, err)
 		}
+
+		boundaries = append(boundaries, policy)
 	}
 
 	if r := args.AuditorRole; r != nil {
-		if err := newAuditor(ctx, name, names, args, opt); err != nil {
+		if err := newAuditor(ctx, name, names, args, opt, boundaries); err != nil {
 			return nil, err
 		}
 	}
@@ -436,7 +447,7 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 	return comp, nil
 }
 
-func newAuditor(ctx *pulumi.Context, name string, names NameFunc, args *Args, opt []pulumi.ResourceOption) error {
+func newAuditor(ctx *pulumi.Context, name string, names NameFunc, args *Args, opt []pulumi.ResourceOption, boundaries []pulumi.Resource) error {
 	r := args.AuditorRole
 	child := func(k Kind, n string) string {
 		return names(Child{Component: name, Kind: k, Account: args.Account, Name: n})
@@ -456,11 +467,16 @@ func newAuditor(ctx *pulumi.Context, name string, names NameFunc, args *Args, op
 		}
 	}
 
+	roleOpts := opt
+	if len(boundaries) > 0 {
+		roleOpts = append(slices.Clone(opt), pulumi.DependsOn(boundaries))
+	}
+
 	role, err := iam.NewRole(ctx, child(KindAuditorRole, r.Name), &iam.RoleArgs{
 		Name:                pulumi.String(r.Name),
 		AssumeRolePolicy:    pulumi.String(trustPolicy(r.TrustedPrincipal, r.ExternalID)),
 		PermissionsBoundary: r.PermissionsBoundary,
-	}, opt...)
+	}, roleOpts...)
 	if err != nil {
 		return fmt.Errorf("create auditor role %s in %s: %w", r.Name, args.Account, err)
 	}
