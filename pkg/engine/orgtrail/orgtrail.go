@@ -23,8 +23,11 @@ const (
 	// DefaultPartition is the partition used when Args.Partition is empty.
 	DefaultPartition = "aws"
 
-	// Governance and Compliance are the two Object Lock modes.
+	// Governance is the Object Lock mode that principals holding
+	// s3:BypassGovernanceRetention can override.
 	Governance = "GOVERNANCE"
+	// Compliance is the Object Lock mode nobody can override: it can never be
+	// shortened or removed, the account root included.
 	Compliance = "COMPLIANCE"
 
 	// abortMultipartDays and noncurrentDays are fixed: they only clean up.
