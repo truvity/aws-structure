@@ -64,6 +64,16 @@ type Args struct {
 	// the account only when non-empty. ID and SCPs must be empty, and
 	// BaselineExempt is not read.
 	Accounts []registry.Account
+	// AccountsAfter are resources that every account of this unit waits for,
+	// on top of the unit itself. Optional. AWS refuses CreateAccount when too
+	// many creations are in progress at once ("You've exceeded the number of
+	// account creation requests that can be in progress at the same time"):
+	// pass the previous unit's component to make the units' accounts one unit
+	// after another (depending on a component waits for its children). A
+	// component's own DependsOn does not reach its children, hence this field.
+	// A dependency is not a diff, so setting it on existing accounts changes
+	// nothing in AWS.
+	AccountsAfter []pulumi.Resource
 
 	// Provider is the AWS provider of the organization's management account.
 	// Required.
@@ -283,7 +293,7 @@ func New(ctx *pulumi.Context, name string, args *Args, opts ...pulumi.ResourceOp
 
 		account, err := organizations.NewAccount(ctx,
 			names(Child{Component: name, Kind: KindAccount, Unit: args.Unit.Name, Account: acct.Name}),
-			accountArgs, opt(pulumi.DependsOn([]pulumi.Resource{ou}))...)
+			accountArgs, opt(pulumi.DependsOn(append([]pulumi.Resource{ou}, args.AccountsAfter...)))...)
 		if err != nil {
 			return nil, fmt.Errorf("create account %s: %w", acct.Name, err)
 		}

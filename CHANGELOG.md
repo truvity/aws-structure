@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- **`org.Args.AccountsAfter` (new): resources that every account of the unit waits for.** AWS refuses `CreateAccount` when too many creations are in progress at once ("You've exceeded the number of account creation requests that can be in progress at the same time"); pass the previous unit's component to create the units' accounts one unit after another (depending on a component waits for its children, while a component's own `DependsOn` does not reach them). Additive; a dependency is not a diff, so existing accounts are unchanged.
+
 ## v0.36.0
 
 - **`pkg/engine/orgtrail` (new): `truvity:aws-structure:OrgTrail`, an AWS organisation trail whose bucket and key live in a separate logs account.** Additive; nothing existing changes. Two providers: the trail (organisation-wide, multi-region, log file validation, management events only) is created in the management account; the log bucket and its own KMS key are created in the logs account. The bucket is created with Object Lock (a default retention of `RetentionDays` in `GOVERNANCE` or `COMPLIANCE` mode), versioning, SSE-KMS, a public access block, `BucketOwnerEnforced` and a lifecycle; the key and bucket policies name the one trail ARN, the key policy has no account-root statement (`KeyAdministrators` are named principals) and optional `Readers` get read access to both. Under `GOVERNANCE`, `BypassGovernancePrincipals` are the only principals the bucket policy lets bypass the lock; `COMPLIANCE` can never be shortened or removed by anyone. `Region` and `Partition` are arguments, not looked up. Prerequisites the component does not provide: trusted access for `cloudtrail.amazonaws.com` enabled in the organisation, the trail created from the management account, and the reader roles already existing.

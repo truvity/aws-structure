@@ -463,3 +463,69 @@ func TestSCPsOverTheLimitRefused(t *testing.T) {
 		t.Fatalf("want a size refusal, got %v", err)
 	}
 }
+
+// TestAccountsWaitForAccountsAfter: every account of the unit depends on the
+// resources of AccountsAfter as well as on the unit; the unit itself does not.
+func TestAccountsWaitForAccountsAfter(t *testing.T) {
+	rec := &recorder{}
+
+	err := pulumi.RunErr(func(ctx *pulumi.Context) error {
+		p, err := pulumiaws.NewProvider(ctx, "p", &pulumiaws.ProviderArgs{Region: pulumi.String("region-a")})
+		if err != nil {
+			return err
+		}
+
+		earlier, err := pulumiaws.NewProvider(ctx, "earlier", &pulumiaws.ProviderArgs{Region: pulumi.String("region-a")})
+		if err != nil {
+			return err
+		}
+
+		args := fullArgs()
+		args.Provider = p
+		args.AccountsAfter = []pulumi.Resource{earlier}
+
+		_, err = org.New(ctx, "unit-a", args)
+
+		return err
+	}, pulumi.WithMocks("proj", "stack", rec))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	earlierURN := "urn:pulumi:stack::proj::pulumi:providers:aws::earlier"
+	accounts := 0
+
+	for _, r := range rec.regs {
+		switch r.typ {
+		case "aws:organizations/account:Account":
+			accounts++
+
+			if !slices.Contains(r.dependsOn, earlierURN) {
+				t.Errorf("%s does not wait for AccountsAfter: %v", r.name, r.dependsOn)
+			}
+		case "aws:organizations/organizationalUnit:OrganizationalUnit":
+			if slices.Contains(r.dependsOn, earlierURN) {
+				t.Errorf("the unit %s waits for AccountsAfter; only its accounts should", r.name)
+			}
+		}
+	}
+
+	if accounts != 2 {
+		t.Fatalf("accounts = %d, want 2", accounts)
+	}
+}
+
+// TestNoAccountsAfterKeepsTheDependencies: without AccountsAfter an account
+// depends on its unit only, as before.
+func TestNoAccountsAfterKeepsTheDependencies(t *testing.T) {
+	regs, err := run(t, fullArgs(), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, r := range regs {
+		if r.typ == "aws:organizations/account:Account" && len(r.dependsOn) != 1 {
+			t.Errorf("%s depends on %v, want the unit only", r.name, r.dependsOn)
+		}
+	}
+}
