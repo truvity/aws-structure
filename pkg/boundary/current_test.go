@@ -565,7 +565,8 @@ func TestTransitionDiffersOnlyByLegacyNames(t *testing.T) {
 
 	// The legacy patterns also fit platform roles; the transition builder denies them.
 	if d := statements(t, tr["bound@tech-project-ack"])["DenyPlatformMintedRoles"]; d.Effect != "Deny" ||
-		!slices.Contains(asList(d.Resource), "arn:part:iam::*:role/${aws:PrincipalTag/cluster}-db-*") {
+		!slices.Contains(asList(d.Resource), "arn:part:iam::*:role/${aws:PrincipalTag/cluster}-db-*") ||
+		!slices.Contains(asList(d.Resource), "arn:part:iam::*:role/${aws:PrincipalTag/cluster}-*.db-*") {
 		t.Errorf("transition builder: DenyPlatformMintedRoles = %+v", d)
 	}
 
@@ -614,7 +615,7 @@ func TestControllerBoundariesAreAllowlists(t *testing.T) {
 	}
 
 	iam := statements(t, d["bound@tech-ack-iam"])
-	if got := asList(iam["AllowCreateManagedRole"].Resource); !slices.Equal(got, []string{"arn:part:iam::*:role/*-db-*"}) {
+	if got := asList(iam["AllowCreateManagedRole"].Resource); !slices.Equal(got, []string{"arn:part:iam::*:role/*-db-*", "arn:part:iam::*:role/*.db-*"}) {
 		t.Errorf("ack-iam creates %v", got)
 	}
 
@@ -633,7 +634,10 @@ func TestControllerBoundariesAreAllowlists(t *testing.T) {
 	}
 
 	eks := statements(t, d["bound@tech-ack-eks"])
-	if got := asList(eks["AllowPassPlatformRoles"].Resource); !slices.Equal(got, []string{"arn:part:iam::*:role/*-db-*", "arn:part:iam::*:role/*-lab-*"}) {
+	if got := asList(eks["AllowPassPlatformRoles"].Resource); !slices.Equal(got, []string{
+		"arn:part:iam::*:role/*-db-*", "arn:part:iam::*:role/*.db-*",
+		"arn:part:iam::*:role/*-lab-*", "arn:part:iam::*:role/*.lab-*",
+	}) {
 		t.Errorf("ack-eks passes %v", got)
 	}
 
@@ -741,6 +745,86 @@ func TestBuildersTagKeysOnCreate(t *testing.T) {
 			if !slices.Contains(asList(st["AllowManageOwnKey"].Action), "kms:TagResource") {
 				t.Errorf("%s %s: kms:TagResource on an own key is gone", form, name)
 			}
+		}
+	}
+}
+
+// globMatch reports whether name fits an IAM wildcard pattern ("*" matches any
+// run of characters, including none).
+func globMatch(pattern, name string) bool {
+	parts := strings.Split(pattern, "*")
+	if len(parts) == 1 {
+		return pattern == name
+	}
+
+	if !strings.HasPrefix(name, parts[0]) {
+		return false
+	}
+
+	name = name[len(parts[0]):]
+
+	for _, p := range parts[1 : len(parts)-1] {
+		i := strings.Index(name, p)
+		if i < 0 {
+			return false
+		}
+
+		name = name[i+len(p):]
+	}
+
+	return strings.HasSuffix(name, parts[len(parts)-1])
+}
+
+func anyGlob(patterns []string, name string) bool {
+	return slices.ContainsFunc(patterns, func(p string) bool { return globMatch(p, name) })
+}
+
+// TestDottedRoleShape pins both role name shapes: the controllers cover
+// "<cluster>-<vendor>-<project>-<customer>[-<part>].<class>" beside the
+// hyphenated "*-<slug>-*", and the transition builder denies both.
+func TestDottedRoleShape(t *testing.T) {
+	const (
+		rolePrefix = "arn:part:iam::*:role/"
+		dotted     = rolePrefix + "prod-acme-shop-eu.db-archive"
+		dottedPart = rolePrefix + "prod-acme-shop-eu-ro.db-restore"
+		hyphenated = rolePrefix + "prod-acme-shop-eu-db-archive"
+		other      = rolePrefix + "prod-acme-shop-eu.web-archive"
+	)
+
+	d := docs(t, currentSpec())
+
+	for _, name := range []string{"bound@tech-ack-iam", "bound@tech-ack-eks"} {
+		sts := statements(t, d[name])
+
+		sid := "AllowCreateManagedRole"
+		if name == "bound@tech-ack-eks" {
+			sid = "AllowPassPlatformRoles"
+		}
+
+		res := asList(sts[sid].Resource)
+
+		for _, n := range []string{dotted, dottedPart, hyphenated} {
+			if !anyGlob(res, n) {
+				t.Errorf("%s %s does not cover %s", name, sid, n)
+			}
+		}
+
+		if anyGlob(res, other) {
+			t.Errorf("%s %s covers %s", name, sid, other)
+		}
+	}
+
+	deny := asList(statements(t, docs(t, transitionSpec())["bound@tech-project-ack"])["DenyPlatformMintedRoles"].Resource)
+
+	for _, n := range []string{"prod-acme-shop-eu.db-archive", "prod-db-shop"} {
+		// ${aws:PrincipalTag/cluster} is "prod" for the builder of the cluster.
+		got := make([]string, len(deny))
+		for i, p := range deny {
+			got[i] = strings.ReplaceAll(p, "${aws:PrincipalTag/cluster}", "prod")
+		}
+
+		if !anyGlob(got, rolePrefix+n+"-x") && !anyGlob(got, rolePrefix+n) {
+			t.Errorf("the transition builder does not deny %s", n)
 		}
 	}
 }

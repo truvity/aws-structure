@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## Unreleased
+
+- **`boundary`: a role-name slug also covers the dotted name shape `<cluster>-<vendor>-<project>-<customer>[-<part>].<class>`.** A slug `x` in `ACKScope.IAMRoleSlugs` and `PodIdentityRoleSlugs` stood for the role names `*-x-*`; it now also stands for `*.x-*`, so `IAMRoleSlugs: ["pg"]` covers `prod-acme-shop-eu.pg-archive` in the ack-iam and ack-eks boundaries (create, tag and pass-role statements). The transition form of the project builder (`LegacyProjectNames`) adds `role/<cluster>-*.<slug>-*` to `DenyPlatformMintedRoles`, since the legacy builder pattern `<cluster>-*<project>-*` would otherwise also fit such a platform role. Both shapes are accepted during the overlap and the old patterns are kept. The final-form builder pattern `<cluster>-<project>.*` is unchanged. Rendered policies grow by one resource per slug (the ack-iam, ack-eks and transition project-ack boundaries); the policy documents change, so attach the new versions.
+
 ## v0.36.1
 
 - **`org.Args.AccountsAfter` (new): resources that every account of the unit waits for.** AWS refuses `CreateAccount` when too many creations are in progress at once ("You've exceeded the number of account creation requests that can be in progress at the same time"); pass the previous unit's component to create the units' accounts one unit after another (depending on a component waits for its children, while a component's own `DependsOn` does not reach them). Additive; a dependency is not a diff, so existing accounts are unchanged.

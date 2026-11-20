@@ -24,7 +24,9 @@
       "Action": "iam:PassRole",
       "Resource": [
         "arn:part:iam::*:role/*-db-*",
-        "arn:part:iam::*:role/*-lab-*"
+        "arn:part:iam::*:role/*.db-*",
+        "arn:part:iam::*:role/*-lab-*",
+        "arn:part:iam::*:role/*.lab-*"
       ],
       "Condition": {
         "StringEqualsIfExists": {

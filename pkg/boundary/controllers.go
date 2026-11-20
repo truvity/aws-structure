@@ -24,13 +24,15 @@ func (s *Spec) roleARN(pattern string) string {
 	return fmt.Sprintf("arn:%s:iam::*:role/%s", s.Partition, pattern)
 }
 
-// slugRoles returns the ARN patterns "*-<slug>-*" of the roles named by slugs.
+// slugRoles returns the ARN patterns of the roles named by slugs: "*-<slug>-*"
+// and, for the dotted shape "<cluster>-<vendor>-<project>-<customer>[-<part>].<class>",
+// "*.<slug>-*". Both shapes are accepted while the names overlap.
 func (s *Spec) slugRoles(slugs ...[]string) []string {
 	var out []string
 
 	for _, group := range slugs {
 		for _, slug := range group {
-			out = append(out, s.roleARN("*-"+slug+"-*"))
+			out = append(out, s.roleARN("*-"+slug+"-*"), s.roleARN("*."+slug+"-*"))
 		}
 	}
 

@@ -209,11 +209,12 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 
 	if legacy {
 		// A legacy pattern "<cluster>-*<project>-*" also fits the roles and
-		// policies the platform mints under a project's name.
+		// policies the platform mints under a project's name, in either name
+		// shape: "<cluster>-<slug>-*" and the dotted "<cluster>-*.<slug>-*".
 		var minted []string
 
 		for _, slug := range s.ACK.IAMRoleSlugs {
-			minted = append(minted, s.roleARN(tagCluster+"-"+slug+"-*"),
+			minted = append(minted, s.roleARN(tagCluster+"-"+slug+"-*"), s.roleARN(tagCluster+"-*."+slug+"-*"),
 				fmt.Sprintf("arn:%s:iam::*:policy/%s-%s-*", s.Partition, tagCluster, slug))
 		}
 
