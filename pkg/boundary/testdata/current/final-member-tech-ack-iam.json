@@ -14,7 +14,10 @@
       "Sid": "AllowCreateManagedRole",
       "Effect": "Allow",
       "Action": "iam:CreateRole",
-      "Resource": "arn:part:iam::*:role/*-db-*",
+      "Resource": [
+        "arn:part:iam::*:role/*-db-*",
+        "arn:part:iam::*:role/*.db-*"
+      ],
       "Condition": {
         "ArnLike": {
           "iam:PermissionsBoundary": "arn:part:iam::*:policy/bound@default"
@@ -28,7 +31,10 @@
       "Sid": "AllowSetBoundaryOnManagedRole",
       "Effect": "Allow",
       "Action": "iam:PutRolePermissionsBoundary",
-      "Resource": "arn:part:iam::*:role/*-db-*",
+      "Resource": [
+        "arn:part:iam::*:role/*-db-*",
+        "arn:part:iam::*:role/*.db-*"
+      ],
       "Condition": {
         "ArnLike": {
           "iam:PermissionsBoundary": "arn:part:iam::*:policy/bound@default"
@@ -51,7 +57,10 @@
         "iam:PutRolePolicy",
         "iam:DeleteRolePolicy"
       ],
-      "Resource": "arn:part:iam::*:role/*-db-*",
+      "Resource": [
+        "arn:part:iam::*:role/*-db-*",
+        "arn:part:iam::*:role/*.db-*"
+      ],
       "Condition": {
         "StringEquals": {
           "aws:ResourceTag/services.k8s.aws/namespace": "db-system"

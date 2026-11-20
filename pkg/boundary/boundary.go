@@ -66,7 +66,9 @@ type ACKScope struct {
 	// own role. Required.
 	IAMNamespace string
 	// IAMRoleSlugs are the name slugs of those roles: the slug "x" stands for
-	// the role names "*-x-*" (and, for the legacy deny, "<cluster>-x-*").
+	// the role names "*-x-*" and "*.x-*" (the dotted shape, whose class
+	// follows the dot), and, for the legacy deny, "<cluster>-x-*" and
+	// "<cluster>-*.x-*".
 	// Required.
 	IAMRoleSlugs []string
 	// PodIdentityRoleSlugs are further slugs of roles the EKS controller may

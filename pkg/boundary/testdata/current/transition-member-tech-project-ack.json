@@ -286,6 +286,7 @@
       "Action": "iam:*",
       "Resource": [
         "arn:part:iam::*:role/${aws:PrincipalTag/cluster}-db-*",
+        "arn:part:iam::*:role/${aws:PrincipalTag/cluster}-*.db-*",
         "arn:part:iam::*:policy/${aws:PrincipalTag/cluster}-db-*"
       ]
     },
