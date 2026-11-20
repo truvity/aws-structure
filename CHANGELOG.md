@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.36.1
 
 - **`org.Args.AccountsAfter` (new): resources that every account of the unit waits for.** AWS refuses `CreateAccount` when too many creations are in progress at once ("You've exceeded the number of account creation requests that can be in progress at the same time"); pass the previous unit's component to create the units' accounts one unit after another (depending on a component waits for its children, while a component's own `DependsOn` does not reach them). Additive; a dependency is not a diff, so existing accounts are unchanged.
 
