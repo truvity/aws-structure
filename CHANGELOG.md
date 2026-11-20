@@ -3,7 +3,7 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
-## Unreleased
+## v0.37.0
 
 - **`boundary`: a role-name slug also covers the dotted name shape `<cluster>-<vendor>-<project>-<customer>[-<part>].<class>`.** A slug `x` in `ACKScope.IAMRoleSlugs` and `PodIdentityRoleSlugs` stood for the role names `*-x-*`; it now also stands for `*.x-*`, so `IAMRoleSlugs: ["pg"]` covers `prod-acme-shop-eu.pg-archive` in the ack-iam and ack-eks boundaries (create, tag and pass-role statements). The transition form of the project builder (`LegacyProjectNames`) adds `role/<cluster>-*.<slug>-*` to `DenyPlatformMintedRoles`, since the legacy builder pattern `<cluster>-*<project>-*` would otherwise also fit such a platform role. Both shapes are accepted during the overlap and the old patterns are kept. The final-form builder pattern `<cluster>-<project>.*` is unchanged. Rendered policies grow by one resource per slug (the ack-iam, ack-eks and transition project-ack boundaries); the policy documents change, so attach the new versions.
 
