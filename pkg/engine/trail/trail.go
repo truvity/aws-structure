@@ -202,6 +202,13 @@ type Args struct {
 	// prefixes. Switching an existing trail between the two forms updates it
 	// in place.
 	DataEventExclusions []string
+	// NoManagementEvents makes the trail log no management events, only the
+	// S3 data events: for an account whose management events an organization
+	// trail already records, where a second copy is a paid one. Optional;
+	// false keeps management events. In the classic form the selector's
+	// IncludeManagementEvents is false; in the advanced form the "Management
+	// events" selector is left out. Either way the trail updates in place.
+	NoManagementEvents bool
 	// ReplicationRole is the role replication runs as.
 	ReplicationRole ReplicationRole
 
@@ -317,7 +324,7 @@ func trailSelectors(args *Args) (cloudtrail.TrailEventSelectorArrayInput, cloudt
 		return cloudtrail.TrailEventSelectorArray{
 			&cloudtrail.TrailEventSelectorArgs{
 				ReadWriteType:           pulumi.String("All"),
-				IncludeManagementEvents: pulumi.Bool(true),
+				IncludeManagementEvents: pulumi.Bool(!args.NoManagementEvents),
 				DataResources: cloudtrail.TrailEventSelectorDataResourceArray{
 					&cloudtrail.TrailEventSelectorDataResourceArgs{
 						Type:   pulumi.String("AWS::S3::Object"),
@@ -333,8 +340,9 @@ func trailSelectors(args *Args) (cloudtrail.TrailEventSelectorArrayInput, cloudt
 		excluded = append(excluded, pulumi.String(x))
 	}
 
-	return nil, cloudtrail.TrailAdvancedEventSelectorArray{
-		&cloudtrail.TrailAdvancedEventSelectorArgs{
+	var selectors cloudtrail.TrailAdvancedEventSelectorArray
+	if !args.NoManagementEvents {
+		selectors = append(selectors, &cloudtrail.TrailAdvancedEventSelectorArgs{
 			Name: pulumi.String("Management events"),
 			FieldSelectors: cloudtrail.TrailAdvancedEventSelectorFieldSelectorArray{
 				&cloudtrail.TrailAdvancedEventSelectorFieldSelectorArgs{
@@ -342,7 +350,10 @@ func trailSelectors(args *Args) (cloudtrail.TrailEventSelectorArrayInput, cloudt
 					Equals: pulumi.StringArray{pulumi.String("Management")},
 				},
 			},
-		},
+		})
+	}
+
+	return nil, append(selectors,
 		&cloudtrail.TrailAdvancedEventSelectorArgs{
 			Name: pulumi.String("S3 data events"),
 			FieldSelectors: cloudtrail.TrailAdvancedEventSelectorFieldSelectorArray{
@@ -360,7 +371,7 @@ func trailSelectors(args *Args) (cloudtrail.TrailEventSelectorArrayInput, cloudt
 				},
 			},
 		},
-	}
+	)
 }
 
 // checkNames refuses a naming hook that returns an empty or repeated name.
