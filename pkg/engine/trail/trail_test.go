@@ -490,3 +490,55 @@ func TestExclusionRefusals(t *testing.T) {
 		})
 	}
 }
+
+func TestNoManagementEventsClassic(t *testing.T) {
+	a := full()
+	a.NoManagementEvents = true
+
+	regs, err := run(t, a, opt{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sel := by(regs)["trail-acct-trail"].inputs["eventSelectors"].ArrayValue()
+	if len(sel) != 1 {
+		t.Fatalf("selectors = %v", sel)
+	}
+
+	o := sel[0].ObjectValue()
+	if o["includeManagementEvents"].BoolValue() {
+		t.Errorf("management events still included: %v", o)
+	}
+
+	if dr := o["dataResources"].ArrayValue(); len(dr) != 1 || dr[0].ObjectValue()["type"].StringValue() != "AWS::S3::Object" {
+		t.Errorf("data resources = %v", dr)
+	}
+}
+
+func TestManagementEventsKeptByDefault(t *testing.T) {
+	regs, err := run(t, full(), opt{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	o := by(regs)["trail-acct-trail"].inputs["eventSelectors"].ArrayValue()[0].ObjectValue()
+	if !o["includeManagementEvents"].BoolValue() {
+		t.Errorf("management events dropped by default: %v", o)
+	}
+}
+
+func TestNoManagementEventsAdvanced(t *testing.T) {
+	a := full()
+	a.DataEventExclusions = []string{exclusionFixture()}
+	a.NoManagementEvents = true
+
+	regs, err := run(t, a, opt{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	adv := by(regs)["trail-acct-trail"].inputs["advancedEventSelectors"].ArrayValue()
+	if len(adv) != 1 || adv[0].ObjectValue()["name"].StringValue() != "S3 data events" {
+		t.Errorf("advanced selectors = %v", adv)
+	}
+}

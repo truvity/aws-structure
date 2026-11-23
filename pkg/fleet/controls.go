@@ -81,6 +81,10 @@ type TrailArgs struct {
 	// log. Optional; an account without an entry keeps the classic selector,
 	// unchanged. See trail.Args.DataEventExclusions.
 	DataEventExclusions map[string][]string
+	// NoManagementEvents makes every account's trail log no management
+	// events, only its S3 data events: for a fleet whose management events an
+	// organization trail records. See trail.Args.NoManagementEvents.
+	NoManagementEvents bool
 	// ReplicationRoleName is a format of (account name). Required.
 	ReplicationRoleName string
 }
@@ -126,6 +130,7 @@ func (f *Fleet) Trail(ctx *pulumi.Context, logger *slog.Logger, a TrailArgs) err
 			TrailARN:            pulumi.Sprintf("arn:%s:cloudtrail:%s:%s:trail/*", f.Partition, region, id),
 			DataEventResource:   a.DataEventResource,
 			DataEventExclusions: a.DataEventExclusions[account],
+			NoManagementEvents:  a.NoManagementEvents,
 			ReplicationRole: awstrail.ReplicationRole{
 				Name:                fmt.Sprintf(a.ReplicationRoleName, account),
 				PermissionsBoundary: f.BoundaryARN(id),
