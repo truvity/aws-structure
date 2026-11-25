@@ -15,9 +15,29 @@
         "kms:DescribeKey",
         "kms:Sign",
         "kms:Verify",
-        "kms:GetPublicKey"
+        "kms:GetPublicKey",
+        "kms:DeriveSharedSecret"
       ],
       "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/project": "${aws:PrincipalTag/project}"
+        }
+      }
+    },
+    {
+      "Sid": "AllowDynamoDBOwnProjectTables",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:BatchGetItem",
+        "dynamodb:Query",
+        "dynamodb:PutItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:TransactWriteItems",
+        "dynamodb:DescribeTable"
+      ],
+      "Resource": "arn:part:dynamodb:*:*:table/*",
       "Condition": {
         "StringEquals": {
           "aws:ResourceTag/project": "${aws:PrincipalTag/project}"

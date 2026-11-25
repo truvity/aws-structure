@@ -230,10 +230,15 @@ func (s *Spec) builder(name string, legacy bool) (string, error) {
 }
 
 // projectWorkload is the boundary of the roles a builder creates for a
-// project's pods: data actions on the project's own keys (by tag), buckets (by
-// name prefix) and ECR repositories (by name), and no IAM at all, so the
-// delegation chain ends here. SSM, Secrets Manager, DynamoDB and SQS are not in
-// it.
+// project's pods: data actions on the project's own keys and DynamoDB tables
+// (by tag), buckets (by name prefix) and ECR repositories (by name), and no IAM
+// at all, so the delegation chain ends here. SSM, Secrets Manager and SQS are
+// not in it.
+//
+// The key actions include kms:DeriveSharedSecret for KEY_AGREEMENT keys, and
+// the table actions are the item reads and writes of a store plus
+// DescribeTable, never a table's creation, deletion or settings: a project's
+// tables are made by the platform (the session stack, kernel D93 A).
 func (s *Spec) projectWorkload() (string, error) {
 	legacy := s.LegacyProjectNames
 
@@ -244,9 +249,21 @@ func (s *Spec) projectWorkload() (string, error) {
 				"kms:Encrypt", "kms:Decrypt", "kms:ReEncrypt*", "kms:GenerateDataKey",
 				"kms:GenerateDataKeyWithoutPlaintext", "kms:GenerateDataKeyPair",
 				"kms:GenerateDataKeyPairWithoutPlaintext", "kms:DescribeKey", "kms:Sign", "kms:Verify",
-				"kms:GetPublicKey",
+				"kms:GetPublicKey", "kms:DeriveSharedSecret",
 			},
 			Resource: star(), Condition: []policy.Condition{ownProject()},
+		},
+		{
+			// DynamoDB evaluates aws:ResourceTag on a table for its item actions
+			// (attribute-based access control), so the same project tag as the
+			// keys scopes them. Tables only: no index or stream ARN.
+			Sid: "AllowDynamoDBOwnProjectTables", Effect: allow,
+			Action: []string{
+				"dynamodb:GetItem", "dynamodb:BatchGetItem", "dynamodb:Query", "dynamodb:PutItem",
+				"dynamodb:DeleteItem", "dynamodb:TransactWriteItems", "dynamodb:DescribeTable",
+			},
+			Resource:  []string{fmt.Sprintf("arn:%s:dynamodb:*:*:table/*", s.Partition)},
+			Condition: []policy.Condition{ownProject()},
 		},
 		{Sid: "AllowKMSRandom", Effect: allow, Action: []string{"kms:GenerateRandom"}, Resource: star()},
 		{
