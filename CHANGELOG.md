@@ -3,6 +3,10 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## v0.40.0
+
+- **`boundary`: the project workload boundary (`Names.ProjectWorkload`) covers key agreement and the project's own DynamoDB tables.** `AllowKMSUseOwnProjectKeys` adds `kms:DeriveSharedSecret`, so a pod can use its project's `KEY_AGREEMENT` keys. A new `AllowDynamoDBOwnProjectTables` allows `GetItem`, `BatchGetItem`, `Query`, `PutItem`, `DeleteItem`, `TransactWriteItems` and `DescribeTable` on table ARNs, under the same condition as the keys (`aws:ResourceTag/project` equals the principal's `project` tag): tag a table `project=<name>` for the project's pods to reach it. No table creation, deletion, settings, index or stream access. Additive; the workload document changes in both forms, so attach the new version.
+
 ## v0.39.0
 
 - **`boundary`: the admin boundary no longer denies `route53:DeleteHostedZone`** (decision 0005). Route 53 has no condition key on that action, so the deny refused every replacement of a zone, a rename of an empty private zone included. The rest of `DenyDestructiveActions` stays, and the audit boundary keeps the deny. The admin documents change in every variant and under both names (`Names.Admin`, `Names.RoleAdmin`): attach the new versions.
