@@ -620,6 +620,8 @@ var iamWriteDenied = []string{
 	"iam:Resync*", "iam:Pass*", "iam:Deactivate*", "iam:Generate*",
 }
 
+// destructiveActions are denied by the audit boundary, which allows
+// everything else.
 var destructiveActions = []string{
 	"cloudtrail:DeleteTrail",
 	"cloudtrail:StopLogging",
@@ -627,6 +629,18 @@ var destructiveActions = []string{
 	"kms:DisableKey",
 	"kms:ScheduleKeyDeletion",
 	"route53:DeleteHostedZone",
+}
+
+// adminDestructiveActions are denied by the admin boundary: destructiveActions
+// less route53:DeleteHostedZone. Route 53 has no condition key on that action,
+// so a deny of it cannot be narrowed and refuses every replacement of a zone;
+// pkg/dns protects the zones instead (docs/decisions/0005-hosted-zone-delete.md).
+var adminDestructiveActions = []string{
+	"cloudtrail:DeleteTrail",
+	"cloudtrail:StopLogging",
+	"ec2:DeleteVpc",
+	"kms:DisableKey",
+	"kms:ScheduleKeyDeletion",
 }
 
 // marshal renders the statements as the policy document of the boundary name,
@@ -677,7 +691,7 @@ func (s *Spec) adminAs(name string) (string, error) {
 
 	stmts = append(stmts,
 		noBoundaryDelete(),
-		policy.Statement{Sid: "DenyDestructiveActions", Effect: deny, Action: destructiveActions, Resource: star()},
+		policy.Statement{Sid: "DenyDestructiveActions", Effect: deny, Action: adminDestructiveActions, Resource: star()},
 		policy.Statement{
 			Sid: "DenyDeletePulumiStateBuckets", Effect: deny, Action: []string{"s3:DeleteBucket"},
 			Resource: []string{fmt.Sprintf("arn:%s:s3:::pulumi-state-*", s.Partition)},
