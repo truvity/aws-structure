@@ -517,6 +517,25 @@ func TestWorkloadBoundaryHasNoIAMAndKeysOnTheRoleTags(t *testing.T) {
 
 		if k := st["AllowKMSUseOwnProjectKeys"]; k.Condition["StringEquals"]["aws:ResourceTag/project"] != "${aws:PrincipalTag/project}" {
 			t.Errorf("%s: keys are not scoped to the principal's project tag", form)
+		} else if !slices.Contains(asList(k.Action), "kms:DeriveSharedSecret") {
+			t.Errorf("%s: a KEY_AGREEMENT key cannot be used (no kms:DeriveSharedSecret)", form)
+		}
+
+		d := st["AllowDynamoDBOwnProjectTables"]
+		if d.Condition["StringEquals"]["aws:ResourceTag/project"] != "${aws:PrincipalTag/project}" {
+			t.Errorf("%s: tables are not scoped to the principal's project tag", form)
+		}
+
+		want := []string{
+			"dynamodb:BatchGetItem", "dynamodb:DeleteItem", "dynamodb:DescribeTable", "dynamodb:GetItem",
+			"dynamodb:PutItem", "dynamodb:Query", "dynamodb:TransactWriteItems",
+		}
+		if got := slices.Sorted(slices.Values(asList(d.Action))); !slices.Equal(got, want) {
+			t.Errorf("%s: table actions %v, want exactly %v", form, got, want)
+		}
+
+		if r := asList(d.Resource); len(r) != 1 || !strings.HasSuffix(r[0], ":table/*") {
+			t.Errorf("%s: table statement reaches %v, want table ARNs only", form, r)
 		}
 
 		for _, a := range actionsOfEffect(t, doc, "Allow") {
