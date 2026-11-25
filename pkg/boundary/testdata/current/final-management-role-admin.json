@@ -99,8 +99,7 @@
         "cloudtrail:StopLogging",
         "ec2:DeleteVpc",
         "kms:DisableKey",
-        "kms:ScheduleKeyDeletion",
-        "route53:DeleteHostedZone"
+        "kms:ScheduleKeyDeletion"
       ],
       "Resource": "*"
     },

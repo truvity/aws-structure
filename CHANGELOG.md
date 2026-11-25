@@ -3,6 +3,11 @@
 Entries are written for someone deciding whether to bump: what changed for
 them, and for anything breaking, what to do.
 
+## v0.39.0
+
+- **`boundary`: the admin boundary no longer denies `route53:DeleteHostedZone`** (decision 0005). Route 53 has no condition key on that action, so the deny refused every replacement of a zone, a rename of an empty private zone included. The rest of `DenyDestructiveActions` stays, and the audit boundary keeps the deny. The admin documents change in every variant and under both names (`Names.Admin`, `Names.RoleAdmin`): attach the new versions.
+- **`dns`: every hosted zone `newZone` makes or imports is `protect`ed** (`NewPublicZone`, `NewPrivateZone`, `Deploy`, `DeployRootZone`, `DeployEnvironmentZone`). A delete or a replacement of one now fails until it is unprotected (`pulumi state unprotect <urn>`). An existing zone becomes protected on its stack's next update, with no change to the zone. If a stack means to replace or remove such a zone, unprotect it first.
+
 ## v0.38.0
 
 - **`trail.Args.NoManagementEvents` and `fleet.TrailArgs.NoManagementEvents` (new): an account trail that logs only its S3 data events.** For accounts whose management events an organisation trail already records, where each account's own copy is a second, paid one. The classic selector gets `IncludeManagementEvents: false`; the advanced form (with `DataEventExclusions`) leaves out the "Management events" selector. The trail is updated in place; buckets, key and replication are unchanged. Additive: false, the default, keeps management events as before.

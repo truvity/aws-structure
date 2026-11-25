@@ -746,7 +746,8 @@ The provider names are API: a stack's state holds them.
 ## `pkg/dns`
 
 Route 53 zones, delegation and records. Plain resources: the logical names are
-the API.
+the API. Every zone (`<prefix>/<zone>/zone`) is `protect`ed, made or imported:
+a delete or replace of one fails until it is unprotected (decision 0005).
 
 | Function | Creates |
 | --- | --- |
@@ -946,6 +947,11 @@ references is resolved BY NAME in each account, so the policy of that name may d
 `boundary.Spec.OrgAdmin` (`OrgAdminMode`) uses this to make one admin set both the member-account
 admin and the organization administrator in the management account. Opt-in: the zero value
 (`OrgAdminOff`) renders the admin boundary byte for byte as before.
+
+The admin boundary's destructive list (`DenyDestructiveActions`) is `cloudtrail:DeleteTrail`,
+`cloudtrail:StopLogging`, `ec2:DeleteVpc`, `kms:DisableKey` and `kms:ScheduleKeyDeletion`, in every
+variant. `route53:DeleteHostedZone` left it in v0.39.0 (decision 0005), and the audit boundary
+still denies it.
 
 | `Spec.OrgAdmin` | Where | Admin boundary |
 |---|---|---|

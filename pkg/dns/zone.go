@@ -14,7 +14,9 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/pulumi"
 )
 
-// newZone creates or imports a hosted zone with optional NS delegation.
+// newZone creates or imports a hosted zone with optional NS delegation. The
+// zone is protected: a delete or replace of it fails until a person
+// unprotects it (docs/decisions/0005-hosted-zone-delete.md).
 // isPrivate controls the Route53 zone type.
 // bootstrapVPCID is required for private zones — Route53 needs at least one VPC at creation time.
 func newZone(
@@ -70,7 +72,7 @@ func newZone(
 				"Name":      pulumi.String(base.ZoneName),
 				"ManagedBy": pulumi.String("pulumi"),
 			},
-		}, pulumi.Provider(awsProvider), pulumi.Import(pulumi.ID(zoneID)))
+		}, pulumi.Provider(awsProvider), pulumi.Import(pulumi.ID(zoneID)), pulumi.Protect(true))
 		if err != nil {
 			return nil, fmt.Errorf("import existing zone %s (ID: %s): %w", base.ZoneName, zoneID, err)
 		}
@@ -94,7 +96,7 @@ func newZone(
 				"Name":      pulumi.String(base.ZoneName),
 				"ManagedBy": pulumi.String("pulumi"),
 			},
-		}, pulumi.Provider(awsProvider))
+		}, pulumi.Provider(awsProvider), pulumi.Protect(true))
 		if err != nil {
 			return nil, fmt.Errorf("create zone: %w", err)
 		}
